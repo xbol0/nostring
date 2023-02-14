@@ -106,7 +106,7 @@ async function handleEventMessage(msg: ClientEventMessage, socket: WebSocket) {
 
   // NIP-26
   try {
-    ev.delegator = await getDelegator(ev);
+    await getDelegator(ev);
   } catch (err) {
     return socket.send(
       JSON.stringify(["OK", ev.id, false, "invalid: " + err.message]),
