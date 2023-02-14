@@ -130,6 +130,7 @@ export class PgRepository implements DataAdapter {
           pubkey: hex.encode(i.pubkey),
           sig: hex.encode(i.sig),
           delegator: undefined,
+          created_at: ~~(i.created_at.getTime() / 1000),
         }));
       } catch (err) {
         console.error(err);
