@@ -11,6 +11,7 @@ import type {
   ReqParams,
   Subinfo,
 } from "./types.ts";
+import { channel } from "./broadcast_channel.ts";
 
 // TODO: fix websocket subscription mapping
 const Subscriptions = new Map<string, Subinfo>();
@@ -168,6 +169,27 @@ async function handleEventMessage(msg: ClientEventMessage, socket: WebSocket) {
       break;
     }
   }
+
+  if (channel) channel.postMessage(ev);
+}
+
+if (channel) {
+  channel.addEventListener("messageerror", (e) => {
+    console.error(e.data);
+  });
+
+  channel.addEventListener("message", (e) => {
+    console.log("broadcast channel event:", e.data);
+
+    for (const [id, info] of Subscriptions.entries()) {
+      for (const item of info.filters) {
+        if (!matchSubscription(e.data, item)) continue;
+        info.socket.send(JSON.stringify(["EVENT", id, e.data]));
+
+        break;
+      }
+    }
+  });
 }
 
 function matchSubscription(ev: NostrEvent, sub: ReqParams) {
