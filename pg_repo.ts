@@ -160,7 +160,7 @@ export class PgRepository implements DataAdapter {
         sqls.push("tags @> $3");
         const f = e.tags.find((i) => i[0] === "d");
         const d = f ? f[1] || "" : "";
-        args.push(JSON.stringify(["d", d]));
+        args.push(JSON.stringify([["d", d]]));
       }
       const sql = `select id,created_at from events where ${
         sqls.join(" and ")
