@@ -7,6 +7,7 @@ A simple [Nostr](https://github.com/nostr-protocol/nostr) relay written in Deno.
 ## Features
 
 - Can deployed on [Deno Deploy](https://deno.com/deploy)
+- Internal forward events by BroadcastChannel(Only on Deno Deploy)
 - Multi data store provider(WIP)
   - [x] PostgreSQL
   - [ ] Deta base
@@ -17,6 +18,7 @@ A simple [Nostr](https://github.com/nostr-protocol/nostr) relay written in Deno.
   - [x] 09
   - [x] 11
   - [x] 12
+  - [ ] 13
   - [x] 15
   - [x] 16
   - [x] 20
@@ -46,3 +48,10 @@ A simple [Nostr](https://github.com/nostr-protocol/nostr) relay written in Deno.
 ```
 deno task start
 ```
+
+## Roadmap
+
+- [ ] Deta Base data provider
+- [ ] NIP-111 support
+- [ ] NIP-03 support
+- [ ] Relay administration
