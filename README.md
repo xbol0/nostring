@@ -18,7 +18,7 @@ A simple [Nostr](https://github.com/nostr-protocol/nostr) relay written in Deno.
   - [x] 09
   - [x] 11
   - [x] 12
-  - [ ] 13
+  - [x] 13
   - [x] 15
   - [x] 16
   - [x] 20
@@ -42,6 +42,7 @@ A simple [Nostr](https://github.com/nostr-protocol/nostr) relay written in Deno.
 - `RELAY_DESC` optional, NIP-11 description field
 - `ADMIN_PUBKEY` optional, NIP-11 pubkey field
 - `RELAY_CONTACT` optional, NIP-11 contact field
+- `MIN_POW` optional, NIP-13 min pow
 
 ## Usage
 

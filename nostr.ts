@@ -1,6 +1,8 @@
 import { NostrEvent } from "./types.ts";
 import { encoder, hex, secp256k1 } from "./deps.ts";
 
+const MIN_POW = parseInt(Deno.env.get("MIN_POW") || "0");
+
 export function isEvent(ev: NostrEvent): ev is NostrEvent {
   if (typeof ev !== "object") return false;
   if (!ev) return false;
@@ -56,8 +58,9 @@ export async function validateEvent(ev: NostrEvent) {
 
   // NIP-13: PoW
   const pow = ev.tags.find((i) => i[0] === "nonce");
-  if (pow) {
+  if (MIN_POW && pow) {
     const diff = parseInt(pow[2]);
+    if (diff < MIN_POW) throw new Error("PoW less then " + MIN_POW);
     const buf = hex.decode(ev.id.slice(0, Math.ceil(diff / 8) * 2));
     const str = [...buf].map((i) => i.toString(2).padStart(8, "0")).slice(diff);
     if (!str.every((i) => i === "0")) throw new Error("PoW invalid");
