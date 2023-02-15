@@ -1,13 +1,13 @@
 export interface DataAdapter {
   init(): Promise<void>;
   insertEvent(e: NostrEvent): Promise<void>;
-  query(params: ReqParams): Promise<NostrEvent[]>;
+  query(params: ReqParams & { skip?: number }): Promise<NostrEvent[]>;
   delete(ids: string[], author: string): Promise<void>;
   replaceEvent(e: NostrEvent): Promise<void>;
 }
 
 export type ReqParams =
-  & Record<string, string>
+  & Record<string, unknown>
   & Partial<{
     ids: string[];
     authors: string[];

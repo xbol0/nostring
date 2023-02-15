@@ -273,13 +273,29 @@ function verifyData(i: unknown): i is ClientMessage {
 async function handleReq(
   id: string,
   socket: WebSocket,
-  params: ReqParams,
+  params: ReqParams & { skip?: number },
 ) {
   const list = await db.query(params);
   console.log("found", list.length, "events");
 
   if (list.length) {
-    for (const item of list) socket.send(JSON.stringify(["EVENT", id, item]));
+    for (const item of list) {
+      socket.send(JSON.stringify(["EVENT", id, item]));
+    }
+
+    if (params.skip) {
+      if (params.skip >= 500) return;
+      if (params.limit && params.skip >= params.limit) return;
+    }
+
+    if (params.limit && list.length >= params.limit) {
+      if (list.length >= params.limit) return;
+    }
+
+    const skip = params.skip ? params.skip + list.length : list.length;
+    nextTick(() => handleReq(id, socket, { ...params, skip }));
+    return;
+  } else {
+    socket.send(JSON.stringify(["EOSE", id]));
   }
-  socket.send(JSON.stringify(["EOSE", id]));
 }

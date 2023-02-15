@@ -65,8 +65,8 @@ export class PgRepository implements DataAdapter {
 
   async query(params: ReqParams & { skip?: number }) {
     return await this.use(async (db) => {
-      const sqlPart: string[] = [],
-        args: Record<string, unknown> = { limit: 100, skip: 0 };
+      const sqlPart: string[] = ["1=1"],
+        args: Record<string, unknown> = { limit: 100, skip: params.skip ?? 0 };
 
       if (params.ids) {
         sqlPart.push("id=any($ids)");
@@ -120,11 +120,16 @@ export class PgRepository implements DataAdapter {
         sqlPart.join(" and ") +
         " and (expires_at>current_timestamp or expires_at is null) and deleted_at is null" +
         " order by created_at desc limit $limit offset $skip";
-      console.log(sql, args);
+      // console.log(sql, args);
 
       try {
         const res = await db.queryObject<RawEvent>(sql, args);
-        return res.rows.map((i) => ({
+
+        const rows =
+          (params.limit && params.limit < (params.skip ?? 0) + res.rows.length)
+            ? res.rows.slice(0, params.limit - params.skip!)
+            : res.rows;
+        return rows.map((i) => ({
           ...i,
           id: hex.encode(i.id),
           pubkey: hex.encode(i.pubkey),
