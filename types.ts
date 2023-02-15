@@ -1,32 +1,24 @@
 export interface DataAdapter {
   init(): Promise<void>;
   insertEvent(e: NostrEvent): Promise<void>;
-  query(params: ReqParams & { skip?: number }): Promise<NostrEvent[]>;
+  query(params: ReqParams): Promise<NostrEvent[]>;
   delete(ids: string[], author: string): Promise<void>;
   replaceEvent(e: NostrEvent): Promise<void>;
 }
 
-export type ReqParams =
-  & Record<string, unknown>
-  & Partial<{
-    ids: string[];
-    authors: string[];
-    kinds: number[];
-    "#e": string[];
-    "#p": string[];
-    since: number;
-    until: number;
-    limit: number;
+export type ReqParams = Partial<{
+  ids: string[];
+  authors: string[];
+  kinds: number[];
+  "#e": string[];
+  "#p": string[];
+  since: number;
+  until: number;
+  limit: number;
 
-    // NIP-50
-    search: string;
-  }>;
-
-export type Subinfo = {
-  sendCount: number;
-  socket: WebSocket;
-  filters: ReqParams[];
-};
+  // NIP-50
+  search: string;
+}>;
 
 export type ClientEventMessage = ["EVENT", NostrEvent];
 export type ClientReqMessage = ["REQ", string, ...ReqParams[]];

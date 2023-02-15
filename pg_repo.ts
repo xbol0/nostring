@@ -63,10 +63,10 @@ export class PgRepository implements DataAdapter {
     );
   }
 
-  async query(params: ReqParams & { skip?: number }) {
+  async query(params: ReqParams) {
     return await this.use(async (db) => {
       const sqlPart: string[] = ["1=1"],
-        args: Record<string, unknown> = { limit: 100, skip: params.skip ?? 0 };
+        args: Record<string, unknown> = { limit: 100 };
 
       if (params.ids) {
         sqlPart.push("id=any($ids)");
@@ -98,11 +98,9 @@ export class PgRepository implements DataAdapter {
         args.search = `%${params.search}%`;
       }
 
-      if (params.limit && params.limit > 0 && params.limit < 100) {
-        args.limit = params.limit;
-      }
-
-      if (params.skip) args.skip = params.skip;
+      args.limit = params.limit && params.limit < args.limit!
+        ? params.limit
+        : args.limit;
 
       // NIP-12
       for (const [k, v] of Object.entries(params)) {
@@ -119,17 +117,13 @@ export class PgRepository implements DataAdapter {
         "select id,kind,created_at,content,pubkey,sig,tags from events where " +
         sqlPart.join(" and ") +
         " and (expires_at>current_timestamp or expires_at is null) and deleted_at is null" +
-        " order by created_at desc limit $limit offset $skip";
+        " order by created_at desc limit $limit";
       // console.log(sql, args);
 
       try {
         const res = await db.queryObject<RawEvent>(sql, args);
 
-        const rows =
-          (params.limit && params.limit < (params.skip ?? 0) + res.rows.length)
-            ? res.rows.slice(0, params.limit - params.skip!)
-            : res.rows;
-        return rows.map((i) => ({
+        return res.rows.map((i) => ({
           ...i,
           id: hex.encode(i.id),
           pubkey: hex.encode(i.pubkey),

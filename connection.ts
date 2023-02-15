@@ -9,25 +9,21 @@ import type {
   ClientReqMessage,
   NostrEvent,
   ReqParams,
-  Subinfo,
 } from "./types.ts";
 import { channel } from "./broadcast_channel.ts";
 
-// TODO: fix websocket subscription mapping
-const Subscriptions = new Map<string, Subinfo>();
+const Subscriptions = new Map<WebSocket, Record<string, ReqParams[]>>();
 const AuthChallenges = new Map<WebSocket, string>();
 
 export function append(socket: WebSocket) {
-  const subs: string[] = [];
-
   socket.addEventListener("error", (ev) => {
     console.error(ev);
     socket.close();
-    for (const i of subs) Subscriptions.delete(i);
+    Subscriptions.delete(socket);
   });
 
   socket.addEventListener("close", () => {
-    for (const i of subs) Subscriptions.delete(i);
+    Subscriptions.delete(socket);
   });
 
   socket.addEventListener("message", (ev) => {
@@ -48,7 +44,7 @@ export function append(socket: WebSocket) {
 
     switch (data[0]) {
       case "REQ":
-        return handleReqMessage(data, socket, (s) => subs.push(s));
+        return handleReqMessage(data, socket);
       case "CLOSE":
         return handleCloseMessage(data, socket);
       case "AUTH":
@@ -61,24 +57,19 @@ export function append(socket: WebSocket) {
   });
 }
 
-function handleReqMessage(
-  msg: ClientReqMessage,
-  socket: WebSocket,
-  bindSub: (s: string) => void,
-) {
+function handleReqMessage(msg: ClientReqMessage, socket: WebSocket) {
   if (typeof msg[1] !== "string") return;
   const filters = msg.slice(2).filter((i) =>
     typeof i === "object"
   ) as ReqParams[];
   if (filters.length === 0) return;
 
-  if (Subscriptions.has(msg[1])) {
-    socket.send(JSON.stringify(["EOSE", msg[1]]));
-    return;
+  let sub = Subscriptions.get(socket);
+  if (!sub) {
+    sub = {};
+    Subscriptions.set(socket, sub);
   }
-
-  Subscriptions.set(msg[1], { socket, filters, sendCount: 0 });
-  bindSub(msg[1]);
+  sub[msg[1]] = filters;
 
   for (const item of filters) {
     nextTick(() => handleReq(msg[1], socket, item));
@@ -88,11 +79,10 @@ function handleReqMessage(
 function handleCloseMessage(msg: ClientCloseMessage, socket: WebSocket) {
   if (typeof msg[1] !== "string") return;
 
-  const sub = Subscriptions.get(msg[1]);
+  const sub = Subscriptions.get(socket);
   if (!sub) return;
 
-  if (sub.socket !== socket) return;
-  Subscriptions.delete(msg[1]);
+  delete sub[msg[1]];
 }
 
 async function handleEventMessage(msg: ClientEventMessage, socket: WebSocket) {
@@ -161,34 +151,31 @@ async function handleEventMessage(msg: ClientEventMessage, socket: WebSocket) {
 
   socket.send(JSON.stringify(["OK", ev.id, true, ""]));
 
-  for (const [id, info] of Subscriptions.entries()) {
-    for (const item of info.filters) {
-      if (!matchSubscription(ev, item)) continue;
-      info.socket.send(JSON.stringify(["EVENT", id, ev]));
-
-      break;
-    }
-  }
+  broadcast(ev);
 
   if (channel) channel.postMessage(ev);
 }
 
-if (channel) {
-  channel.addEventListener("messageerror", (e) => {
-    console.error(e.data);
-  });
-
-  channel.addEventListener("message", (e) => {
-    console.log("broadcast channel event:", e.data);
-
-    for (const [id, info] of Subscriptions.entries()) {
-      for (const item of info.filters) {
-        if (!matchSubscription(e.data, item)) continue;
-        info.socket.send(JSON.stringify(["EVENT", id, e.data]));
+function broadcast(ev: NostrEvent) {
+  for (const [ws, info] of Subscriptions.entries()) {
+    for (const [id, filters] of Object.entries(info)) {
+      for (const item of filters) {
+        if (!matchSubscription(ev, item)) continue;
+        ws.send(JSON.stringify(["EVENT", id, ev]));
 
         break;
       }
     }
+  }
+}
+
+if (channel) {
+  channel.addEventListener("messageerror", (e) => console.error(e.data));
+
+  channel.addEventListener("message", (e) => {
+    console.log("broadcast channel event:", e.data);
+
+    broadcast(e.data);
   });
 }
 
@@ -270,32 +257,12 @@ function verifyData(i: unknown): i is ClientMessage {
   return true;
 }
 
-async function handleReq(
-  id: string,
-  socket: WebSocket,
-  params: ReqParams & { skip?: number },
-) {
+async function handleReq(id: string, socket: WebSocket, params: ReqParams) {
   const list = await db.query(params);
   console.log("found", list.length, "events");
 
-  if (list.length) {
-    for (const item of list) {
-      socket.send(JSON.stringify(["EVENT", id, item]));
-    }
-
-    if (params.skip) {
-      if (params.skip >= 500) return;
-      if (params.limit && params.skip >= params.limit) return;
-    }
-
-    if (params.limit && list.length >= params.limit) {
-      if (list.length >= params.limit) return;
-    }
-
-    const skip = params.skip ? params.skip + list.length : list.length;
-    nextTick(() => handleReq(id, socket, { ...params, skip }));
-    return;
-  } else {
-    socket.send(JSON.stringify(["EOSE", id]));
+  for (const item of list) {
+    socket.send(JSON.stringify(["EVENT", id, item]));
   }
+  socket.send(JSON.stringify(["EOSE", id]));
 }
