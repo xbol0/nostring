@@ -89,9 +89,11 @@ async function handleEventMessage(msg: ClientEventMessage, socket: WebSocket) {
   const ev = msg[1];
   if (!isEvent(ev)) return;
 
-  if (!await validateEvent(msg[1])) {
+  try {
+    await validateEvent(msg[1]);
+  } catch (err) {
     return socket.send(
-      JSON.stringify(["OK", ev.id, false, "invalid: validate event fail"]),
+      JSON.stringify(["OK", ev.id, false, "invalid: " + err.message]),
     );
   }
 
@@ -151,7 +153,7 @@ async function handleEventMessage(msg: ClientEventMessage, socket: WebSocket) {
 
   socket.send(JSON.stringify(["OK", ev.id, true, ""]));
 
-  broadcast(ev);
+  nextTick(() => broadcast(ev));
 
   if (channel) channel.postMessage(ev);
 }
@@ -224,12 +226,12 @@ async function handleAuthMessage(ev: ClientAuthMessage, socket: WebSocket) {
   if (stored[1] !== challenge) return;
 
   try {
-    if (!await validateEvent(ev[1])) throw new Error("Unvalidate");
+    await validateEvent(ev[1]);
 
     socket.send(JSON.stringify(["OK", ev[1].id, true, ""]));
-  } catch {
+  } catch (err) {
     socket.send(
-      JSON.stringify(["OK", ev[1].id, false, "restricted: event unvalidated"]),
+      JSON.stringify(["OK", ev[1].id, false, "restricted: " + err.message]),
     );
   } finally {
     AuthChallenges.delete(socket);

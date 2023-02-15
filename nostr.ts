@@ -1,5 +1,5 @@
 import { NostrEvent } from "./types.ts";
-import { encoder, secp256k1 } from "./deps.ts";
+import { encoder, hex, secp256k1 } from "./deps.ts";
 
 export function isEvent(ev: NostrEvent): ev is NostrEvent {
   if (typeof ev !== "object") return false;
@@ -10,7 +10,7 @@ export function isEvent(ev: NostrEvent): ev is NostrEvent {
   if (!("sig" in ev) || typeof ev.sig !== "string") return false;
   if (!("created_at" in ev) || typeof ev.created_at !== "number") return false;
   if (!("kind" in ev) || typeof ev.kind !== "number") return false;
-  if (!("tags" in ev) || !(ev.tags instanceof Array)) return false;
+  if (!("tags" in ev) || !Array.isArray(ev.tags)) return false;
 
   if (!/^[a-f0-9]{64}$/.test(ev.id)) return false;
   if (!/^[a-f0-9]{64}$/.test(ev.pubkey)) return false;
@@ -44,25 +44,30 @@ export async function getEventHash(event: NostrEvent) {
 }
 
 export async function validateEvent(ev: NostrEvent) {
-  if (typeof ev.content !== "string") return false;
-  if (typeof ev.created_at !== "number") return false;
-  if (typeof ev.pubkey !== "string") return false;
-  if (!ev.pubkey.match(/^[a-f0-9]{64}$/)) return false;
+  if (!isEvent(ev)) throw new Error("Invalid event format");
 
-  if (!Array.isArray(ev.tags)) return false;
   for (let i = 0; i < ev.tags.length; i++) {
     const tag = ev.tags[i];
-    if (!Array.isArray(tag)) return false;
+    if (!Array.isArray(tag)) throw new Error("Invalid tag format");
     for (let j = 0; j < tag.length; j++) {
-      if (typeof tag[j] === "object") return false;
+      if (typeof tag[j] === "object") throw new Error("Invalid tag value");
     }
   }
 
-  return await secp256k1.schnorr.verify(
-    ev.sig,
-    await getEventHash(ev),
-    ev.pubkey,
-  );
+  // NIP-13: PoW
+  const pow = ev.tags.find((i) => i[0] === "nonce");
+  if (pow) {
+    const diff = parseInt(pow[2]);
+    const buf = hex.decode(ev.id.slice(0, Math.ceil(diff / 8) * 2));
+    const str = [...buf].map((i) => i.toString(2).padStart(8, "0")).slice(diff);
+    if (!str.every((i) => i === "0")) throw new Error("PoW invalid");
+  }
+
+  if (
+    !await secp256k1.schnorr.verify(ev.sig, await getEventHash(ev), ev.pubkey)
+  ) {
+    throw new Error("Invalid signature");
+  }
 }
 
 export async function getDelegator(event: NostrEvent) {
