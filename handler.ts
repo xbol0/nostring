@@ -1,6 +1,7 @@
 import * as Conn from "./connection.ts";
+import { db } from "./repo.ts";
 
-export function rootHandler(req: Request) {
+export async function rootHandler(req: Request) {
   if (req.headers.get("accept") === "application/nostr+json") {
     const host = new URL(req.url).hostname;
     return new Response(
@@ -12,6 +13,7 @@ export function rootHandler(req: Request) {
         "supported_nips": [1, 2, 4, 9, 11, 12, 15, 16, 20, 22, 26, 28, 33, 40],
         "software": "https://github.com/xbol0/nostring",
         "version": "v1",
+        ...await db.getStatistics(),
       }),
       { headers: { "content-type": "application/nostr+json" } },
     );

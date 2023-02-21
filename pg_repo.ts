@@ -198,6 +198,17 @@ export class PgRepository implements DataAdapter {
     });
   }
 
+  async getStatistics() {
+    return await this.use(async (db) => {
+      const res = await db.queryArray(
+"select 'total',count(*) from events where deleted_at is null union \
+select 'pubkeys',count(distinct pubkey) from events where deleted_at is null union \
+select 'notes',count(*) from events where deleted_at is null and kind=1",
+      );
+      return Object.fromEntries(res.rows.map((i) => [i[0], Number(i[1])]));
+    });
+  }
+
   async m202302131450(db: pg.PoolClient) {
     await db.queryArray(
       "create table if not exists events (id bytea primary key,pubkey bytea not null,created_at timestamp not null,kind int not null,tags jsonb,content text not null,sig bytea not null,expires_at timestamp default null,deleted_at timestamp default null)",

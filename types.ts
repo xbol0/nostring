@@ -4,6 +4,7 @@ export interface DataAdapter {
   query(params: ReqParams): Promise<NostrEvent[]>;
   delete(ids: string[], author: string): Promise<void>;
   replaceEvent(e: NostrEvent): Promise<void>;
+  getStatistics(): Promise<Record<string, number>>;
 }
 
 export type ReqParams = Partial<{

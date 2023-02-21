@@ -26,7 +26,6 @@ A simple [Nostr](https://github.com/nostr-protocol/nostr) relay written in Deno.
   - [x] 28
   - [x] 33
   - [x] 40
-  - [ ] 111
 
 ## Requirements
 
@@ -51,6 +50,5 @@ deno task start
 
 ## Roadmap
 
-- [ ] NIP-111 support
 - [ ] NIP-03 support
 - [ ] Relay administration
