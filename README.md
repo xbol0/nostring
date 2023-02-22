@@ -10,6 +10,8 @@ A simple [Nostr](https://github.com/nostr-protocol/nostr) relay written in Deno.
 - Internal forward events by BroadcastChannel(Only on Deno Deploy)
 - Multi data store provider(WIP)
   - [x] PostgreSQL
+- Filter spam messages
+  - [x] https://spam.nostr.band/spam_api?method=get_current_spam
 - Supported NIPs
   - [x] 01
   - [x] 02
@@ -52,3 +54,7 @@ deno task start
 
 - [ ] NIP-03 support
 - [ ] Relay administration
+
+## Thanks
+
+[nostr.band](https://nostr.band/) provide spam keyword list

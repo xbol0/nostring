@@ -11,6 +11,7 @@ import type {
   ReqParams,
 } from "./types.ts";
 import { channel } from "./broadcast_channel.ts";
+import { isSpam } from "./spam_filter.ts";
 
 const Subscriptions = new Map<WebSocket, Record<string, ReqParams[]>>();
 const AuthChallenges = new Map<WebSocket, string>();
@@ -119,6 +120,13 @@ async function handleEventMessage(msg: ClientEventMessage, socket: WebSocket) {
     );
   }
 
+  // filter spam
+  if (ev.kind === 1 && isSpam(ev.content)) {
+    return socket.send(
+      JSON.stringify(["OK", ev.id, false, "invalid: spam filter"]),
+    );
+  }
+
   // NIP-16
   if (ev.kind < 10000) {
     // NIP-40
@@ -163,6 +171,8 @@ function broadcast(ev: NostrEvent) {
     for (const [id, filters] of Object.entries(info)) {
       for (const item of filters) {
         if (!matchSubscription(ev, item)) continue;
+        if (ev.kind === 1 && isSpam(ev.content)) continue;
+
         ws.send(JSON.stringify(["EVENT", id, ev]));
 
         break;
