@@ -57,6 +57,19 @@ All variables are optional.
 deno task start
 ```
 
+## Use as a library
+
+```ts
+// Your init code...
+import { Application } from "./app.ts"
+const app = new Application();
+
+// handle a request
+const res = Deno.upgradeWebSocket(req)
+app.addSocket(res.socket)
+
+```
+
 ## Thanks
 
 [nostr.band](https://nostr.band/) provide spam keyword list
