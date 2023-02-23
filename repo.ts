@@ -1,7 +1,7 @@
 import { PgRepository } from "./pg_repo.ts";
 import { DataAdapter } from "./types.ts";
 
-function getRepo(url: string): DataAdapter {
+export function getRepo(url: string): DataAdapter {
   if (!url) throw new Error("Invalid DB_URL");
 
   if (url.startsWith("postgresql://")) {
@@ -13,5 +13,3 @@ function getRepo(url: string): DataAdapter {
 
   throw new Error("Unsupported data provider");
 }
-
-export const db = getRepo(Deno.env.get("DB_URL") || "");

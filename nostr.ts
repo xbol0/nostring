@@ -1,7 +1,8 @@
-import { NostrEvent } from "./types.ts";
+import { ClientMessage, NostrEvent, ReqParams } from "./types.ts";
 import { encoder, hex, secp256k1 } from "./deps.ts";
 
 const MIN_POW = parseInt(Deno.env.get("MIN_POW") || "0");
+const MSG_TYPES = new Set(["REQ", "CLOSE", "EVENT", "AUTH"]);
 
 export function isEvent(ev: NostrEvent): ev is NostrEvent {
   if (typeof ev !== "object") return false;
@@ -118,4 +119,60 @@ export async function getDelegator(event: NostrEvent) {
   }
 
   return pubkey;
+}
+
+export function verifyData(i: unknown): i is ClientMessage {
+  if (!(i instanceof Array)) return false;
+  if (!MSG_TYPES.has(i[0])) return false;
+
+  if (i[0] === "REQ") {
+    if (typeof i[1] !== "string") return false;
+    if (i.length < 3) return false;
+    if (i.slice(2).some((i) => typeof i !== "object" || i === null)) {
+      return false;
+    }
+  }
+
+  if (i[0] === "CLOSE" && typeof i[1] !== "string") return false;
+  if (i[0] === "AUTH" && !isEvent(i[1])) return false;
+  if (i[0] === "EVENT" && !isEvent(i[1])) return false;
+
+  return true;
+}
+
+export function matchSubscription(ev: NostrEvent, sub: ReqParams) {
+  if (sub.authors && !sub.authors.find((i) => ev.pubkey.startsWith(i))) {
+    return false;
+  }
+
+  if (sub.ids && !sub.ids.find((i) => ev.id.startsWith(i))) {
+    return false;
+  }
+
+  if (sub.kinds && !sub.kinds.includes(ev.kind)) {
+    return false;
+  }
+
+  if (sub.since && sub.since > ev.created_at) {
+    return false;
+  }
+
+  if (sub.until && sub.until < ev.created_at) {
+    return false;
+  }
+
+  const collections = Object.entries(sub).filter((i) => i[0].startsWith("#"));
+  for (const [k, v] of collections) {
+    const key = k.slice(1);
+    const list = ev.tags.filter((i) => i[0] === key).map((i) => i[1]);
+    if (!list.length) return false;
+
+    if (!list.some((i) => (v as string[]).includes(i))) return false;
+  }
+
+  return true;
+}
+
+export function send(socket: WebSocket, data: unknown[]) {
+  socket.send(JSON.stringify(data));
 }

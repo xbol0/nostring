@@ -12,10 +12,13 @@ A simple [Nostr](https://github.com/nostr-protocol/nostr) relay written in Deno.
   - [x] PostgreSQL
 - Filter spam messages
   - [x] https://spam.nostr.band/spam_api?method=get_current_spam
+- Relay administration
 - Supported NIPs
   - [x] 01
   - [x] 02
+  - [ ] 03
   - [x] 04
+  - [ ] 05
   - [x] 09
   - [x] 11
   - [x] 12
@@ -28,6 +31,8 @@ A simple [Nostr](https://github.com/nostr-protocol/nostr) relay written in Deno.
   - [x] 28
   - [x] 33
   - [x] 40
+  - [ ] 56
+  - [ ] 57
 
 ## Requirements
 
@@ -36,24 +41,21 @@ A simple [Nostr](https://github.com/nostr-protocol/nostr) relay written in Deno.
 
 ## Configure environments
 
-- `DB_URL` REQUIRED, eg. postgres://localhost:5432/nostring
-- `PORT` optional, defaults 9000
-- `RELAY_NAME` optional, NIP-11 name field
-- `RELAY_DESC` optional, NIP-11 description field
-- `ADMIN_PUBKEY` optional, NIP-11 pubkey field
-- `RELAY_CONTACT` optional, NIP-11 contact field
-- `MIN_POW` optional, NIP-13 min pow
+All variables are optional.
+
+- `DB_URL` defaults postgres://localhost:5432/nostring
+- `PORT` defaults 9000
+- `RELAY_NAME` NIP-11 name field
+- `RELAY_DESC` NIP-11 description field
+- `ADMIN_PUBKEY` NIP-11 pubkey field
+- `RELAY_CONTACT` NIP-11 contact field
+- `MIN_POW` NIP-13 min pow
 
 ## Usage
 
 ```
 deno task start
 ```
-
-## Roadmap
-
-- [ ] NIP-03 support
-- [ ] Relay administration
 
 ## Thanks
 
