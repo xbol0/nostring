@@ -4,7 +4,7 @@ import { encoder, hex, secp256k1 } from "./deps.ts";
 const MIN_POW = parseInt(Deno.env.get("MIN_POW") || "0");
 const MSG_TYPES = new Set(["REQ", "CLOSE", "EVENT", "AUTH"]);
 
-export function isEvent(ev: NostrEvent): ev is NostrEvent {
+export function isEvent(ev: unknown): ev is NostrEvent {
   if (typeof ev !== "object") return false;
   if (!ev) return false;
   if (!("id" in ev) || typeof ev.id !== "string") return false;
@@ -22,10 +22,10 @@ export function isEvent(ev: NostrEvent): ev is NostrEvent {
   return true;
 }
 
-export function serializeEvent(ev: NostrEvent): string {
-  if (!isEvent(ev)) {
-    throw new Error("can't serialize event with wrong or missing properties");
-  }
+export function serializeEvent(ev: Omit<NostrEvent, "id" | "sig">): string {
+  // if (!isEvent(ev)) {
+  //   throw new Error("can't serialize event with wrong or missing properties");
+  // }
 
   return JSON.stringify([
     0,
