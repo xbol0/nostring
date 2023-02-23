@@ -5,6 +5,9 @@ export interface DataAdapter {
   delete(ids: string[], author: string): Promise<void>;
   replaceEvent(e: NostrEvent): Promise<void>;
   getStatistics(): Promise<Record<string, number>>;
+  getNip05(name: string): Promise<string>;
+  setNip05(pubkey: Uint8Array, name: string): Promise<void>;
+  delNip05(pubkey: Uint8Array, name: string): Promise<void>;
 }
 
 export type ReqParams = Partial<{

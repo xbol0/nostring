@@ -30,3 +30,22 @@ export async function rootHandler(req: Request) {
 
   return res.response;
 }
+
+export async function nip05Handler(req: Request) {
+  const url = new URL(req.url);
+  const name = url.searchParams.get("name");
+  if (!name) return new Response(null, { status: 404 });
+
+  try {
+    const pubkey = await app.db.getNip05(name);
+    return new Response(JSON.stringify({
+      names: { [name]: pubkey },
+      relays: { [pubkey]: [url.origin.replace(/^http/, "ws")] },
+    }));
+  } catch (err) {
+    return new Response(err.message, {
+      status: 400,
+      headers: { "content-type": "text/plain" },
+    });
+  }
+}

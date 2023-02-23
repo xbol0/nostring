@@ -17,7 +17,10 @@ export class PgRepository implements DataAdapter {
       const res = await db.queryArray<[BigInt]>(
         "select count(*) from migrations",
       );
-      const migs = [this.m202302131450].slice(Number(res.rows[0][0]));
+      const migs = [
+        this.m202302131450,
+        this.m202302231546,
+      ].slice(Number(res.rows[0][0]));
 
       for (const fn of migs) {
         await fn(db);
@@ -209,6 +212,45 @@ select 'notes',count(*) from events where deleted_at is null and kind=1",
     });
   }
 
+  getNip05(name: string) {
+    return this.use(async (db) => {
+      const res = await db.queryArray<[Uint8Array]>(
+        "select pubkey from nip05s where name=$1",
+        [name],
+      );
+      if (!res.rows.length) throw new Error(`Not found name '${name}'`);
+      return hex.encode(res.rows[0][0]);
+    });
+  }
+
+  async setNip05(pubkey: Uint8Array, name: string) {
+    await this.use(async (db) => {
+      const res = await db.queryArray(
+        "insert into nip05s (pubkey,name) values ($1,$2) on conflict do nothing returning name",
+        [pubkey, name],
+      );
+      if (!res.rows.length) {
+        throw new Error(
+          "A pubkey can only has a nip-05 name or this name has been used",
+        );
+      }
+    });
+  }
+
+  async delNip05(pubkey: Uint8Array, name: string) {
+    await this.use(async (db) => {
+      const res = await db.queryArray(
+        "delete from nip05s where pubkey=$1 and name=$2 returning name",
+        [pubkey, name],
+      );
+      if (!res.rows.length) {
+        throw new Error(
+          "You do not have name or this name do not belongs to you",
+        );
+      }
+    });
+  }
+
   async m202302131450(db: pg.PoolClient) {
     await db.queryArray(
       "create table if not exists events (id bytea primary key,pubkey bytea not null,created_at timestamp not null,kind int not null,tags jsonb,content text not null,sig bytea not null,expires_at timestamp default null,deleted_at timestamp default null)",
@@ -224,6 +266,12 @@ select 'notes',count(*) from events where deleted_at is null and kind=1",
     );
     await db.queryArray(
       "create index if not exists tags_idx on events (tags)",
+    );
+  }
+
+  async m202302231546(db: pg.PoolClient) {
+    await db.queryArray(
+      "create table if not exists nip05s (pubkey bytea primary key, name text not null unique)",
     );
   }
 }

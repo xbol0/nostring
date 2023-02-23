@@ -18,7 +18,7 @@ A simple [Nostr](https://github.com/nostr-protocol/nostr) relay written in Deno.
   - [x] 02
   - [ ] 03
   - [x] 04
-  - [ ] 05
+  - [x] 05
   - [x] 09
   - [x] 11
   - [x] 12

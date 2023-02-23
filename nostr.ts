@@ -46,6 +46,10 @@ export async function getEventHash(event: NostrEvent) {
   return secp256k1.utils.bytesToHex(new Uint8Array(hash));
 }
 
+export async function signEvent(id: string, key: string) {
+  return secp256k1.utils.bytesToHex(await secp256k1.schnorr.sign(id, key));
+}
+
 export async function validateEvent(ev: NostrEvent) {
   if (!isEvent(ev)) throw new Error("Invalid event format");
 

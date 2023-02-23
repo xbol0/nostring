@@ -1,8 +1,9 @@
 import { http } from "./deps.ts";
-import { rootHandler } from "./handler.ts";
+import { nip05Handler, rootHandler } from "./handler.ts";
 
 const Router = new Map<string, Deno.ServeHandler>([
   ["GET/", rootHandler],
+  ["GET/.well-known/nostr.json", nip05Handler],
 ]);
 
 export function serve(port: number) {

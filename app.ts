@@ -1,4 +1,5 @@
 import { nextTick } from "./deps.ts";
+import { handle23305 } from "./nip05.ts";
 import {
   getDelegator,
   isEvent,
@@ -178,11 +179,19 @@ export class Application {
       await this.db.replaceEvent(ev);
     }
 
-    send(socket, ["OK", ev.id, true, ""]);
+    try {
+      if (ev.kind === 23305) await handle23305(ev, socket);
 
-    nextTick(() => this.broadcast(ev));
+      send(socket, ["OK", ev.id, true, ""]);
+    } catch (err) {
+      return send(socket, ["OK", ev.id, false, "invalid: " + err.message]);
+    } finally {
+      // its should always forward to client and other relay,
+      // even this event fail on current application
+      nextTick(() => this.broadcast(ev));
 
-    if (this.channel) this.channel.postMessage(ev);
+      if (this.channel) this.channel.postMessage(ev);
+    }
   }
 
   onCLOSE(msg: ClientCloseMessage, socket: WebSocket) {
