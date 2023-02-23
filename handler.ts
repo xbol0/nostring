@@ -36,12 +36,27 @@ export async function nip05Handler(req: Request) {
   const name = url.searchParams.get("name");
   if (!name) return new Response(null, { status: 404 });
 
+  if (name === "_") {
+    const pubkey = Deno.env.get("ADMIN_PUBKEY");
+    if (!pubkey) return new Response(null, { status: 404 });
+    return new Response(
+      JSON.stringify({
+        names: { _: pubkey },
+        relays: { [pubkey]: [url.origin.replace(/^http/, "ws")] },
+      }),
+      { headers: { "content-type": "application/json" } },
+    );
+  }
+
   try {
     const pubkey = await app.db.getNip05(name);
-    return new Response(JSON.stringify({
-      names: { [name]: pubkey },
-      relays: { [pubkey]: [url.origin.replace(/^http/, "ws")] },
-    }));
+    return new Response(
+      JSON.stringify({
+        names: { [name]: pubkey },
+        relays: { [pubkey]: [url.origin.replace(/^http/, "ws")] },
+      }),
+      { headers: { "content-type": "application/json" } },
+    );
   } catch (err) {
     return new Response(err.message, {
       status: 400,

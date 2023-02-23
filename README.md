@@ -70,6 +70,22 @@ app.addSocket(res.socket)
 
 ```
 
+## NIP-05 usage
+
+Everyone can sign an event to this relay for register a NIP-05 name, 
+a pubkey only can register one, you can delete the old to change, 
+the name should be match /[a-z0-9_]{4,}/i, eg.
+
+```js
+{
+  "id": "<event id>",
+  "kind": 23305,
+  // ...
+  "content": "+your_name", // register
+  "content": "-your_name", // shutdown
+}
+```
+
 ## Thanks
 
 [nostr.band](https://nostr.band/) provide spam keyword list
