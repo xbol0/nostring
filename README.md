@@ -32,7 +32,6 @@ A simple [Nostr](https://github.com/nostr-protocol/nostr) relay written in Deno.
   - [x] 33
   - [x] 40
   - [ ] 56
-  - [ ] 57
 
 ## Requirements
 
