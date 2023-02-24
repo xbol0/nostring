@@ -5,6 +5,8 @@ const UpgradeResponse = new Response(
   { status: 400, headers: { "content-type": "text/plain" } },
 );
 
+const CORSHeaders = { "Access-Control-Allow-Origin": "*" };
+
 export async function rootHandler(req: Request) {
   if (req.headers.get("accept") === "application/nostr+json") {
     const host = new URL(req.url).hostname;
@@ -34,17 +36,19 @@ export async function rootHandler(req: Request) {
 export async function nip05Handler(req: Request) {
   const url = new URL(req.url);
   const name = url.searchParams.get("name");
-  if (!name) return new Response(null, { status: 404 });
+  if (!name) return new Response(null, { status: 404, headers: CORSHeaders });
 
   if (name === "_") {
     const pubkey = Deno.env.get("ADMIN_PUBKEY");
-    if (!pubkey) return new Response(null, { status: 404 });
+    if (!pubkey) {
+      return new Response(null, { status: 404, headers: CORSHeaders });
+    }
     return new Response(
       JSON.stringify({
         names: { _: pubkey },
         relays: { [pubkey]: [url.origin.replace(/^http/, "ws")] },
       }),
-      { headers: { "content-type": "application/json" } },
+      { headers: { "content-type": "application/json", ...CORSHeaders } },
     );
   }
 
@@ -55,12 +59,12 @@ export async function nip05Handler(req: Request) {
         names: { [name]: pubkey },
         relays: { [pubkey]: [url.origin.replace(/^http/, "ws")] },
       }),
-      { headers: { "content-type": "application/json" } },
+      { headers: { "content-type": "application/json", ...CORSHeaders } },
     );
   } catch (err) {
     return new Response(err.message, {
       status: 400,
-      headers: { "content-type": "text/plain" },
+      headers: { "content-type": "text/plain", ...CORSHeaders },
     });
   }
 }
