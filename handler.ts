@@ -21,7 +21,7 @@ export async function rootHandler(req: Request) {
         "version": "v1",
         ...await app.db.getStatistics(),
       }),
-      { headers: { "content-type": "application/nostr+json" } },
+      { headers: { "content-type": "application/nostr+json", ...CORSHeaders } },
     );
   }
 
