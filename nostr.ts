@@ -23,9 +23,9 @@ export function isEvent(ev: unknown): ev is NostrEvent {
 }
 
 export function serializeEvent(ev: Omit<NostrEvent, "id" | "sig">): string {
-  // if (!isEvent(ev)) {
-  //   throw new Error("can't serialize event with wrong or missing properties");
-  // }
+  if (!isEvent(ev)) {
+    throw new Error("can't serialize event with wrong or missing properties");
+  }
 
   return JSON.stringify([
     0,
