@@ -8,7 +8,7 @@ import {
   validateEvent,
   verifyData,
 } from "./nostr.ts";
-import { getRepo } from "./repo.ts";
+import { PgRepository } from "./pg_repo.ts";
 import { SpamFilter } from "./spam_filter.ts";
 import type {
   ClientAuthMessage,
@@ -33,7 +33,7 @@ export class Application {
   filter = new SpamFilter();
 
   constructor() {
-    this.db = getRepo(Deno.env.get("DB_URL") || DB_DEFAULT);
+    this.db = this.getRepo();
     if (typeof BroadcastChannel !== "undefined") {
       this.channel = new BroadcastChannel("nostr_event");
     }
@@ -45,6 +45,20 @@ export class Application {
 
     this.filter.updateWordList();
     setInterval(() => this.filter.updateWordList(), 300000);
+  }
+
+  getRepo() {
+    const url = Deno.env.get("DB_URL") || DB_DEFAULT;
+    if (!url) throw new Error("Invalid DB_URL");
+
+    if (url.startsWith("postgresql://")) {
+      return new PgRepository(url);
+    }
+    if (url.startsWith("postgres://")) {
+      return new PgRepository(url);
+    }
+
+    throw new Error("Unsupported data provider");
   }
 
   addSocket(socket: WebSocket) {
