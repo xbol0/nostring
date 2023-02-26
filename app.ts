@@ -1,16 +1,8 @@
 import { nextTick } from "./deps.ts";
-import { handle23305 } from "./nip05.ts";
-import {
-  getDelegator,
-  isEvent,
-  matchSubscription,
-  send,
-  validateEvent,
-  verifyData,
-} from "./nostr.ts";
+import { checkMsg, isEvent, match, validateEvent } from "./nostr.ts";
 import { PgRepository } from "./pg_repo.ts";
-import { SpamFilter } from "./spam_filter.ts";
 import type {
+  ApplicationInit,
   ClientAuthMessage,
   ClientCloseMessage,
   ClientEventMessage,
@@ -21,34 +13,38 @@ import type {
   ReqParams,
 } from "./types.ts";
 
-const ErrNip22 =
-  "invalid: the event created_at field is out of the acceptable range (-30min, +15min) for this relay";
-const DB_DEFAULT = "postgres://localhost:5432/nostring";
+const CORSHeaders = { "Access-Control-Allow-Origin": "*" };
+const NIPs = [1, 2, 4, 9, 11, 12, 15, 16, 20, 22, 26, 28, 33, 40];
 
 export class Application {
   subs = new Map<WebSocket, Record<string, ReqParams[]>>();
   challenges = new Map<WebSocket, string>();
   channel: BroadcastChannel | null = null;
   db: DataAdapter;
-  filter = new SpamFilter();
 
-  constructor() {
+  onConnectFn: (ws: WebSocket, req: Request) => unknown = () => void 0;
+  onEventFn: (e: NostrEvent) => unknown = () => void 0;
+  onAuthFn: (e: NostrEvent) => unknown = () => void 0;
+
+  constructor(opts?: ApplicationInit) {
     this.db = this.getRepo();
     if (typeof BroadcastChannel !== "undefined") {
       this.channel = new BroadcastChannel("nostr_event");
     }
+
+    if (opts) {
+      if (opts.onConnect) this.onConnectFn = opts.onConnect;
+      if (opts.onEvent) this.onEventFn = opts.onEvent;
+      if (opts.onAuth) this.onAuthFn = opts.onAuth;
+    }
   }
 
   async init() {
-    console.log("Starting application...");
     await this.db.init();
-
-    this.filter.updateWordList();
-    setInterval(() => this.filter.updateWordList(), 300000);
   }
 
   getRepo() {
-    const url = Deno.env.get("DB_URL") || DB_DEFAULT;
+    const url = Deno.env.get("DB_URL") || "postgres://localhost:5432/nostring";
     if (!url) throw new Error("Invalid DB_URL");
 
     if (url.startsWith("postgresql://")) {
@@ -62,14 +58,9 @@ export class Application {
   }
 
   addSocket(socket: WebSocket) {
-    socket.addEventListener("error", (ev) => {
-      console.error(ev);
-      try {
-        socket.close();
-      } finally {
-        this.subs.delete(socket);
-        this.challenges.delete(socket);
-      }
+    socket.addEventListener("error", () => {
+      this.subs.delete(socket);
+      this.challenges.delete(socket);
     });
 
     socket.addEventListener("close", () => {
@@ -84,13 +75,11 @@ export class Application {
       try {
         data = JSON.parse(ev.data);
       } catch {
-        socket.close();
-        return;
+        return socket.close();
       }
 
-      if (!verifyData(data)) {
-        console.log("Invalid data", data);
-        return;
+      if (!checkMsg(data)) {
+        return send(socket, ["NOTIFY", `Your data is invalid: '${ev.data}'`]);
       }
 
       switch (data[0]) {
@@ -103,16 +92,15 @@ export class Application {
         case "EVENT":
           return this.onEVENT(data, socket);
         default:
-          return;
+          return send(socket, ["NOTIFY", `Unsupported type: '${data[0]}'`]);
       }
     });
   }
 
-  onREQ(msg: ClientReqMessage, socket: WebSocket) {
+  async onREQ(msg: ClientReqMessage, socket: WebSocket) {
     if (typeof msg[1] !== "string") return;
-    const filters = msg.slice(2).filter((i) =>
-      typeof i === "object"
-    ) as ReqParams[];
+    const filters = msg.slice(2)
+      .filter((i) => typeof i === "object") as ReqParams[];
     if (filters.length === 0) return;
 
     let sub = this.subs.get(socket);
@@ -122,13 +110,9 @@ export class Application {
     }
     sub[msg[1]] = filters;
 
-    nextTick(async () => {
-      const list = await this.db.query(filters);
-      console.log("found", list.length, "events");
-
-      list.forEach((i) => send(socket, ["EVENT", msg[1], i]));
-      send(socket, ["EOSE", msg[1]]);
-    });
+    const list = await this.db.query(filters);
+    list.forEach((i) => send(socket, ["EVENT", msg[1], i]));
+    send(socket, ["EOSE", msg[1]]);
   }
 
   async onEVENT(msg: ClientEventMessage, socket: WebSocket) {
@@ -141,69 +125,35 @@ export class Application {
       return send(socket, ["OK", ev.id, false, "invalid: " + err.message]);
     }
 
-    // NIP-26
     try {
-      await getDelegator(ev);
+      await this.onEventFn(ev);
     } catch (err) {
       return send(socket, ["OK", ev.id, false, "invalid: " + err.message]);
     }
 
-    // NIP-22
-    const now = ~~(Date.now() / 1000);
-    if (ev.created_at > now + 15 * 60 || ev.created_at < now - 30 * 60) {
-      return send(socket, ["OK", ev.id, false, ErrNip22]);
-    }
-
-    // filter spam
-    if (ev.kind === 1 && this.filter.isSpam(ev.content)) {
-      return send(socket, ["OK", ev.id, false, "invalid: spam filter"]);
-    }
-
     // NIP-16
     if (ev.kind < 10000) {
-      // NIP-40
-      const f = ev.tags.find((i) => i[0] === "expiration");
-      if (f) ev.expires_at = +f[1];
-
       // NIP-01
       if (ev.kind === 0) {
         await this.db.replaceEvent(ev);
-        console.log(`usermeta ${ev.pubkey} stored`);
       } else {
         await this.db.insertEvent(ev);
-        console.log(`${ev.id} stored`);
       }
 
       // NIP-09 event deletion
       if (ev.kind === 5) {
-        console.log(`DELETE REASON: ${ev.content}`);
-
         const list = ev.tags.filter((i) => i[0] === "e").map((i) => i[1]);
         await this.db.delete(list, ev.pubkey);
       }
     } else if (ev.kind >= 10000 && ev.kind < 20000) {
       await this.db.replaceEvent(ev);
-    } else if (ev.kind >= 20000 && ev.kind < 30000) {
-      // Ephemeral Events, no store
-      console.log(`${ev.id} kind=${ev.kind} no store`);
     } else if (ev.kind >= 30000 && ev.kind < 40000) {
       // NIP-33
       await this.db.replaceEvent(ev);
     }
 
-    try {
-      if (ev.kind === 23305) await handle23305(ev, socket);
-
-      send(socket, ["OK", ev.id, true, ""]);
-    } catch (err) {
-      return send(socket, ["OK", ev.id, false, "invalid: " + err.message]);
-    } finally {
-      // its should always forward to client and other relay,
-      // even this event fail on current application
-      nextTick(() => this.broadcast(ev));
-
-      if (this.channel) this.channel.postMessage(ev);
-    }
+    send(socket, ["OK", ev.id, true, ""]);
+    nextTick(() => this.broadcast(ev));
   }
 
   onCLOSE(msg: ClientCloseMessage, socket: WebSocket) {
@@ -221,6 +171,7 @@ export class Application {
 
     try {
       await validateEvent(msg[1]);
+      await this.onAuthFn(msg[1]);
 
       send(socket, ["OK", msg[1].id, true, ""]);
     } catch (err) {
@@ -230,16 +181,68 @@ export class Application {
     }
   }
 
-  broadcast(ev: NostrEvent) {
+  getHandler() {
+    return async (req: Request) => {
+      if (req.headers.get("accept") === "application/nostr+json") {
+        const host = new URL(req.url).hostname;
+        return new Response(
+          JSON.stringify({
+            "name": Deno.env.get("RELAY_NAME") || host,
+            "description": Deno.env.get("RELAY_DESC") || "",
+            "pubkey": Deno.env.get("ADMIN_PUBKEY") || "",
+            "contact": Deno.env.get("ADMIN_CONTACT") || "",
+            "supported_nips": NIPs,
+            "software": "https://github.com/xbol0/nostring",
+            "version": "v1",
+            ...await this.db.getStatistics(),
+          }),
+          {
+            headers: {
+              "content-type": "application/nostr+json",
+              ...CORSHeaders,
+            },
+          },
+        );
+      }
+
+      if (!req.headers.has("upgrade")) {
+        return new Response(
+          "Please use nostr client for request.",
+          {
+            status: 400,
+            headers: { "content-type": "text/plain", ...CORSHeaders },
+          },
+        );
+      }
+
+      const res = Deno.upgradeWebSocket(req);
+      try {
+        await this.onConnectFn(res.socket, req);
+        this.addSocket(res.socket);
+      } catch (err) {
+        return new Response(err.message, {
+          status: 400,
+          headers: { "content-type": "text/plain", ...CORSHeaders },
+        });
+      }
+
+      return res.response;
+    };
+  }
+
+  async broadcast(ev: NostrEvent) {
     if (!this.channel) return;
     for (const [ws, info] of this.subs.entries()) {
       for (const [id, filters] of Object.entries(info)) {
         for (const item of filters) {
-          if (!matchSubscription(ev, item)) continue;
-          if (ev.kind === 1 && this.filter.isSpam(ev.content)) continue;
+          if (!match(ev, item)) continue;
+          try {
+            await this.onEventFn(ev);
+          } catch {
+            continue;
+          }
 
-          ws.send(JSON.stringify(["EVENT", id, ev]));
-
+          send(ws, ["EVENT", id, ev]);
           break;
         }
       }
@@ -247,4 +250,10 @@ export class Application {
   }
 }
 
-export const app = new Application();
+function send(socket: WebSocket, data: unknown[]) {
+  try {
+    socket.send(JSON.stringify(data));
+  } catch {
+    // Skip error handle
+  }
+}

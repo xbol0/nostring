@@ -1,4 +1,3 @@
-export * as http from "https://deno.land/std@0.176.0/http/server.ts";
 export * as pg from "https://deno.land/x/postgres@v0.17.0/mod.ts";
 export * as secp256k1 from "https://esm.sh/@noble/secp256k1@1.7.1";
 

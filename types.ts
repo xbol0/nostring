@@ -43,8 +43,6 @@ export type NostrEvent = {
   tags: string[][];
   content: string;
   sig: string;
-  expires_at?: number | null;
-  delegator?: string | null;
 };
 
 export type RawEvent = NostrEvent & {
@@ -53,3 +51,9 @@ export type RawEvent = NostrEvent & {
   sig: Uint8Array;
   created_at: Date;
 };
+
+export type ApplicationInit = Partial<{
+  onConnect: (ws: WebSocket) => unknown;
+  onEvent: (e: NostrEvent) => unknown;
+  onAuth: (e: NostrEvent) => unknown;
+}>;

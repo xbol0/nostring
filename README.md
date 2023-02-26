@@ -2,7 +2,7 @@
 
 **WIP**
 
-A simple [Nostr](https://github.com/nostr-protocol/nostr) relay written in Deno.
+A simple pure [Nostr](https://github.com/nostr-protocol/nostr) relay written in Deno.
 
 ## Features
 
@@ -10,28 +10,9 @@ A simple [Nostr](https://github.com/nostr-protocol/nostr) relay written in Deno.
 - Internal forward events by BroadcastChannel(Only on Deno Deploy)
 - Multi data store provider(WIP)
   - [x] PostgreSQL
-- Filter spam messages
-  - [x] https://spam.nostr.band/spam_api?method=get_current_spam
-- Relay administration
+- Programmable
 - Supported NIPs
-  - [x] 01
-  - [x] 02
-  - [ ] 03
-  - [x] 04
-  - [x] 05
-  - [x] 09
-  - [x] 11
-  - [x] 12
-  - [x] 13
-  - [x] 15
-  - [x] 16
-  - [x] 20
-  - [x] 22
-  - [x] 26
-  - [x] 28
-  - [x] 33
-  - [x] 40
-  - [ ] 56
+  - 01 02 04 09 11 12 15 16 20 26 28 33 40 56
 
 ## Requirements
 
@@ -69,22 +50,3 @@ app.addSocket(res.socket)
 
 ```
 
-## NIP-05 usage
-
-Everyone can sign an event to this relay for register a NIP-05 name, 
-a pubkey only can register one, you can delete the old to change, 
-the name should be match /[a-z0-9_]{4,}/i, eg.
-
-```js
-{
-  "id": "<event id>",
-  "kind": 23305,
-  // ...
-  "content": "+your_name", // register
-  "content": "-your_name", // shutdown
-}
-```
-
-## Thanks
-
-[nostr.band](https://nostr.band/) provide spam keyword list

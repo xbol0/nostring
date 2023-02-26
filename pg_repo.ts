@@ -1,4 +1,5 @@
 import { hex, pg } from "./deps.ts";
+import { getExpires } from "./nostr.ts";
 import { DataAdapter, NostrEvent, RawEvent, ReqParams } from "./types.ts";
 
 export class PgRepository implements DataAdapter {
@@ -60,7 +61,7 @@ export class PgRepository implements DataAdapter {
           e.content,
           JSON.stringify(e.tags),
           hex.decode(e.sig),
-          e.expires_at ? new Date(e.expires_at * 1000) : null,
+          getExpires(e),
         ],
       )
     );
@@ -112,10 +113,8 @@ export class PgRepository implements DataAdapter {
       const sql = `select id,created_at from events where ${
         sqls.join(" and ")
       } and (expires_at>current_timestamp or expires_at is null) and deleted_at is null for update`;
-      console.log(sql, args);
       const res = await tx.queryArray<[Uint8Array, Date]>(sql, args);
 
-      console.log("replace111", res.rows);
       if (res.rows.length) {
         if (~~(res.rows[0][1].getTime() / 1000) < e.created_at) {
           await tx.queryArray("delete from events where id=$1", [
@@ -138,7 +137,7 @@ export class PgRepository implements DataAdapter {
           e.content,
           JSON.stringify(e.tags),
           hex.decode(e.sig),
-          e.expires_at ? new Date(e.expires_at * 1000) : null,
+          getExpires(e),
         ],
       );
 

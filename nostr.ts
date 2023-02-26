@@ -53,6 +53,12 @@ export async function signEvent(id: string, key: string) {
 export async function validateEvent(ev: NostrEvent) {
   if (!isEvent(ev)) throw new Error("Invalid event format");
 
+  // NIP-22
+  const now = ~~(Date.now() / 1000);
+  if (ev.created_at > now + 15 * 60 || ev.created_at < now - 30 * 60) {
+    throw new Error("created_at field is out of the acceptable range");
+  }
+
   for (let i = 0; i < ev.tags.length; i++) {
     const tag = ev.tags[i];
     if (!Array.isArray(tag)) throw new Error("Invalid tag format");
@@ -71,6 +77,9 @@ export async function validateEvent(ev: NostrEvent) {
     if (!str.every((i) => i === "0")) throw new Error("PoW invalid");
   }
 
+  // NIP-26
+  await checkDelegator(ev);
+
   if (
     !await secp256k1.schnorr.verify(ev.sig, await getEventHash(ev), ev.pubkey)
   ) {
@@ -78,7 +87,7 @@ export async function validateEvent(ev: NostrEvent) {
   }
 }
 
-export async function getDelegator(event: NostrEvent) {
+export async function checkDelegator(event: NostrEvent) {
   // find delegation tag
   const tag = event.tags.find((tag) =>
     tag[0] === "delegation" && tag.length >= 4
@@ -121,11 +130,9 @@ export async function getDelegator(event: NostrEvent) {
   if (!await secp256k1.schnorr.verify(sig, new Uint8Array(sighash), pubkey)) {
     throw new Error("Delegation signature unverified");
   }
-
-  return pubkey;
 }
 
-export function verifyData(i: unknown): i is ClientMessage {
+export function checkMsg(i: unknown): i is ClientMessage {
   if (!(i instanceof Array)) return false;
   if (!MSG_TYPES.has(i[0])) return false;
 
@@ -144,7 +151,7 @@ export function verifyData(i: unknown): i is ClientMessage {
   return true;
 }
 
-export function matchSubscription(ev: NostrEvent, sub: ReqParams) {
+export function match(ev: NostrEvent, sub: ReqParams) {
   if (sub.authors && !sub.authors.find((i) => ev.pubkey.startsWith(i))) {
     return false;
   }
@@ -177,6 +184,15 @@ export function matchSubscription(ev: NostrEvent, sub: ReqParams) {
   return true;
 }
 
-export function send(socket: WebSocket, data: unknown[]) {
-  socket.send(JSON.stringify(data));
+export function getExpires(e: NostrEvent) {
+  const expires = e.tags.find((i) => i[0] === "expiration");
+  let expiresTimestamp: number | null = null;
+  if (expires) {
+    expiresTimestamp = parseInt(expires[1]);
+    if (expiresTimestamp <= 0) throw new Error("Invalid expires timestamp");
+    if (expiresTimestamp < ~~(Date.now() / 1000)) {
+      throw new Error("Event expired");
+    }
+  }
+  return expiresTimestamp;
 }

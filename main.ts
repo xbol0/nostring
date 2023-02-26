@@ -1,8 +1,7 @@
-import { serve } from "./server.ts";
-import { app } from "./app.ts";
+import { Application } from "./mod.ts";
+import { serve } from "https://deno.land/std@0.176.0/http/server.ts";
 
-(async () => {
-  await app.init();
-
-  serve(parseInt(Deno.env.get("PORT") || "9000"));
-})();
+const app = new Application();
+await app.init();
+const port = parseInt(Deno.env.get("PORT") || "9000");
+serve(app.getHandler(), { port });
