@@ -41,12 +41,16 @@ deno task start
 
 ```ts
 // Your init code...
-import { Application } from "./app.ts"
-const app = new Application();
+import { Application } from "./mod.ts"
+const app = new Application({
+  onConnect: (ws, req) => {},
+  onEvent: (ev) => {},
+  onAuth: (ev) => {},
+});
 
-// handle a request
-const res = Deno.upgradeWebSocket(req)
-app.addSocket(res.socket)
+// Serve
+import { serve } from "https://deno.land/std/http/server.ts"
 
+serve(app.getHandler())
 ```
 
