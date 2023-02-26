@@ -1,7 +1,7 @@
 export interface DataAdapter {
   init(): Promise<void>;
   insertEvent(e: NostrEvent): Promise<void>;
-  query(params: ReqParams): Promise<NostrEvent[]>;
+  query(params: ReqParams[]): Promise<NostrEvent[]>;
   delete(ids: string[], author: string): Promise<void>;
   replaceEvent(e: NostrEvent): Promise<void>;
   getStatistics(): Promise<Record<string, number>>;

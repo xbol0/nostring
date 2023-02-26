@@ -122,15 +122,13 @@ export class Application {
     }
     sub[msg[1]] = filters;
 
-    for (const item of filters) {
-      nextTick(async () => {
-        const list = await this.db.query(item);
-        console.log("found", list.length, "events");
+    nextTick(async () => {
+      const list = await this.db.query(filters);
+      console.log("found", list.length, "events");
 
-        list.forEach((i) => send(socket, ["EVENT", msg[1], i]));
-        send(socket, ["EOSE", msg[1]]);
-      });
-    }
+      list.forEach((i) => send(socket, ["EVENT", msg[1], i]));
+      send(socket, ["EOSE", msg[1]]);
+    });
   }
 
   async onEVENT(msg: ClientEventMessage, socket: WebSocket) {

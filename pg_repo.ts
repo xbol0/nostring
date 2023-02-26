@@ -66,65 +66,10 @@ export class PgRepository implements DataAdapter {
     );
   }
 
-  async query(params: ReqParams) {
+  async query(params: ReqParams[]) {
     return await this.use(async (db) => {
-      const sqlPart: string[] = ["1=1"],
-        args: Record<string, unknown> = { limit: 100 };
-
-      if (params.ids) {
-        sqlPart.push("id=any($ids)");
-        args.ids = params.ids.map((i) => "\\x" + i);
-      }
-
-      if (params.authors) {
-        sqlPart.push("pubkey=any($authors)");
-        args.authors = params.authors.map((i) => "\\x" + i);
-      }
-
-      if (params.kinds) {
-        sqlPart.push("kind=any($kinds)");
-        args.kinds = params.kinds;
-      }
-
-      if (params.since) {
-        sqlPart.push("created_at > $since");
-        args.since = new Date(params.since * 1000);
-      }
-
-      if (params.until) {
-        sqlPart.push("created_at < $until");
-        args.until = new Date(params.until * 1000);
-      }
-
-      if (params.search) {
-        sqlPart.push("content like $search");
-        args.search = `%${params.search}%`;
-      }
-
-      args.limit = params.limit && params.limit < args.limit!
-        ? params.limit
-        : args.limit;
-
-      // NIP-12
-      for (const [k, v] of Object.entries(params)) {
-        if (k[0] !== "#") continue;
-        if (!(v instanceof Array)) continue;
-        if (!(v as string[]).every((i) => typeof i === "string")) continue;
-
-        const key = k.slice(1);
-        sqlPart.push("tags @> $" + key);
-        args[key] = JSON.stringify(v.map((i) => [key, i]));
-      }
-
-      const sql =
-        "select id,kind,created_at,content,pubkey,sig,tags from events where " +
-        sqlPart.join(" and ") +
-        " and (expires_at>current_timestamp or expires_at is null) and deleted_at is null" +
-        " order by created_at desc limit $limit";
-      // console.log(sql, args);
-
       try {
-        const res = await db.queryObject<RawEvent>(sql, args);
+        const res = await db.queryObject<RawEvent>(...makeQuery(params));
 
         return res.rows.map((i) => ({
           ...i,
@@ -274,4 +219,107 @@ select 'notes',count(*) from events where deleted_at is null and kind=1",
       "create table if not exists nip05s (pubkey bytea primary key, name text not null unique)",
     );
   }
+}
+
+function makeQuery(params: ReqParams[]): [string, unknown[]] {
+  const sqls: string[] = [], args: unknown[] = [];
+  const _p = (p: unknown) => {
+    args.push(p);
+    return `$${args.length}`;
+  };
+  const makeSub = (p: ReqParams) => {
+    const wheres: string[] = ["1=1"];
+    if (p.ids) {
+      const subWheres: string[] = [];
+      const fullIds = p.ids.filter((i) => i.length === 64);
+      const prefixIds = p.ids.filter((i) => i.length < 64);
+      if (fullIds.length) {
+        subWheres.push(`id=any(${_p(fullIds.map((i) => "\\x" + i))})`);
+      }
+      if (prefixIds.length) {
+        for (const id of prefixIds) {
+          subWheres.push(
+            `id between ${_p("\\x" + id.padEnd(64, "0"))} and ${
+              _p("\\x" + id.padEnd(64, "f"))
+            }`,
+          );
+        }
+      }
+      if (subWheres.length > 1) {
+        wheres.push("(" + subWheres.join(" or ") + ")");
+      } else {
+        wheres.push(subWheres[0]);
+      }
+    }
+
+    if (p.authors) {
+      const subWheres: string[] = [];
+      const fullIds = p.authors.filter((i) => i.length === 64);
+      const prefixIds = p.authors.filter((i) => i.length < 64);
+      if (fullIds.length) {
+        subWheres.push(`pubkey=any(${_p(fullIds.map((i) => "\\x" + i))})`);
+        subWheres.push(
+          `tags @> ${
+            _p(JSON.stringify(fullIds.map((i) => ["delegation", i])))
+          }`,
+        );
+      }
+      if (prefixIds.length) {
+        for (const id of prefixIds) {
+          subWheres.push(
+            `pubkey between ${_p("\\x" + id.padEnd(64, "0"))} and ${
+              _p("\\x" + id.padEnd(64, "f"))
+            }`,
+          );
+        }
+      }
+      if (subWheres.length > 1) {
+        wheres.push("(" + subWheres.join(" or ") + ")");
+      } else {
+        wheres.push(subWheres[0]);
+      }
+    }
+
+    if (p.kinds) {
+      wheres.push(`kind=any(${_p(p.kinds)})`);
+    }
+
+    if (p.since) {
+      wheres.push(`created_at > ${_p(new Date(p.since * 1000))}`);
+    }
+
+    if (p.until) {
+      wheres.push(`created_at < ${_p(new Date(p.until * 1000))}`);
+    }
+
+    if (p.search) {
+      wheres.push(`content like ${`%${p.search}%`}`);
+    }
+
+    // NIP-12
+    for (const [k, v] of Object.entries(p)) {
+      if (k[0] !== "#") continue;
+      if (!(v instanceof Array)) continue;
+      if (!(v as string[]).every((i) => typeof i === "string")) continue;
+
+      const key = k.slice(1);
+      wheres.push(`tags @> ${_p(JSON.stringify(v.map((i) => [key, i])))}`);
+    }
+
+    sqls.push(
+      "select id,kind,created_at,content,pubkey,sig,tags from events where " +
+        wheres.join(" and ") +
+        " and (expires_at>current_timestamp or expires_at is null) and deleted_at is null",
+    );
+  };
+
+  params.forEach((i) => makeSub(i));
+  const maxLimit = Math.max(...params.map((i) => i.limit || 0));
+
+  const query = sqls.join(" union ") +
+    ` order by created_at ${maxLimit ? "desc" : "asc"} limit ${
+      _p(maxLimit && maxLimit > 0 && maxLimit < 200 ? maxLimit : 200)
+    }`;
+
+  return [query, args];
 }
