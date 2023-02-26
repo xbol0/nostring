@@ -1,4 +1,4 @@
-import { Application } from "./mod.ts";
+import { Application } from "../mod.ts";
 import { serve } from "https://deno.land/std@0.176.0/http/server.ts";
 
 const app = new Application();
