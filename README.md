@@ -41,7 +41,7 @@ deno task start
 
 ```ts
 // Your init code...
-import { Application } from "./mod.ts"
+import { Application } from "https://deno.land/x/nostring/mod.ts"
 const app = new Application({
   onConnect: (ws, req) => {},
   onEvent: (ev) => {},
