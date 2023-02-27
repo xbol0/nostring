@@ -52,8 +52,18 @@ export type RawEvent = NostrEvent & {
   created_at: Date;
 };
 
-export type ApplicationInit = Partial<{
+export type ApplicationInit = {
+  db: DataAdapter;
+  name: string;
+  description: string;
+  pubkey: string;
+  contact: string;
+  channel: BroadcastChannel;
+  upgradeWebSocketFn: (
+    req: Request,
+  ) => { socket: WebSocket; response: Response };
   onConnect: (ws: WebSocket) => unknown;
-  onEvent: (e: NostrEvent) => unknown;
-  onAuth: (e: NostrEvent) => unknown;
-}>;
+  onEvent: (e: NostrEvent, ws: WebSocket) => unknown;
+  onAuth: (e: NostrEvent, ws: WebSocket) => unknown;
+  onReq: (id: string, filters: ReqParams[], ws: WebSocket) => unknown;
+};

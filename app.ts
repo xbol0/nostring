@@ -1,6 +1,5 @@
 import { nextTick } from "./deps.ts";
 import { checkMsg, isEvent, match, validateEvent } from "./nostr.ts";
-import { PgRepository } from "./pg_repo.ts";
 import type {
   ApplicationInit,
   ClientAuthMessage,
@@ -19,42 +18,30 @@ const NIPs = [1, 2, 4, 9, 11, 12, 15, 16, 20, 22, 26, 28, 33, 40];
 export class Application {
   subs = new Map<WebSocket, Record<string, ReqParams[]>>();
   challenges = new Map<WebSocket, string>();
-  channel: BroadcastChannel | null = null;
+  channel: BroadcastChannel | null;
   db: DataAdapter;
 
-  onConnectFn: (ws: WebSocket, req: Request) => unknown = () => void 0;
-  onEventFn: (e: NostrEvent) => unknown = () => void 0;
-  onAuthFn: (e: NostrEvent) => unknown = () => void 0;
+  onConnectFn: ApplicationInit["onConnect"];
+  onEventFn: ApplicationInit["onEvent"];
+  onAuthFn: ApplicationInit["onAuth"];
+  onReqFn: ApplicationInit["onReq"];
 
-  constructor(opts?: ApplicationInit) {
-    this.db = this.getRepo();
-    if (typeof BroadcastChannel !== "undefined") {
-      this.channel = new BroadcastChannel("nostr_event");
-    }
+  upgradeWS: (req: Request) => { socket: WebSocket; response: Response };
 
-    if (opts) {
-      if (opts.onConnect) this.onConnectFn = opts.onConnect;
-      if (opts.onEvent) this.onEventFn = opts.onEvent;
-      if (opts.onAuth) this.onAuthFn = opts.onAuth;
-    }
+  constructor(opts: Partial<ApplicationInit>) {
+    if (!opts.db) throw new Error("Require db");
+    if (!opts.upgradeWebSocketFn) throw new Error("Require upgradeWebSocketFn");
+    this.db = opts.db;
+    this.upgradeWS = opts.upgradeWebSocketFn;
+    this.channel = opts.channel ?? null;
+    this.onConnectFn = opts.onConnect || (() => void 0);
+    this.onEventFn = opts.onEvent || (() => void 0);
+    this.onAuthFn = opts.onAuth || (() => void 0);
+    this.onReqFn = opts.onReq || (() => void 0);
   }
 
   async init() {
     await this.db.init();
-  }
-
-  getRepo() {
-    const url = Deno.env.get("DB_URL") || "postgres://localhost:5432/nostring";
-    if (!url) throw new Error("Invalid DB_URL");
-
-    if (url.startsWith("postgresql://")) {
-      return new PgRepository(url);
-    }
-    if (url.startsWith("postgres://")) {
-      return new PgRepository(url);
-    }
-
-    throw new Error("Unsupported data provider");
   }
 
   addSocket(socket: WebSocket) {
@@ -69,8 +56,6 @@ export class Application {
     });
 
     socket.addEventListener("message", (ev) => {
-      console.log(ev.data);
-
       let data: ClientMessage;
       try {
         data = JSON.parse(ev.data);
@@ -103,6 +88,12 @@ export class Application {
       .filter((i) => typeof i === "object") as ReqParams[];
     if (filters.length === 0) return;
 
+    try {
+      await this.onReqFn(msg[1], filters, socket);
+    } catch {
+      return;
+    }
+
     let sub = this.subs.get(socket);
     if (!sub) {
       sub = {};
@@ -126,7 +117,7 @@ export class Application {
     }
 
     try {
-      await this.onEventFn(ev);
+      await this.onEventFn(ev, socket);
     } catch (err) {
       return send(socket, ["OK", ev.id, false, "invalid: " + err.message]);
     }
@@ -171,7 +162,7 @@ export class Application {
 
     try {
       await validateEvent(msg[1]);
-      await this.onAuthFn(msg[1]);
+      await this.onAuthFn(msg[1], socket);
 
       send(socket, ["OK", msg[1].id, true, ""]);
     } catch (err) {
@@ -215,32 +206,26 @@ export class Application {
         );
       }
 
-      const res = Deno.upgradeWebSocket(req);
       try {
-        await this.onConnectFn(res.socket, req);
+        const res = this.upgradeWS(req);
+        await this.onConnectFn(res.socket);
         this.addSocket(res.socket);
+        return res.response;
       } catch (err) {
         return new Response(err.message, {
           status: 400,
           headers: { "content-type": "text/plain", ...CORSHeaders },
         });
       }
-
-      return res.response;
     };
   }
 
-  async broadcast(ev: NostrEvent) {
+  broadcast(ev: NostrEvent) {
     if (!this.channel) return;
     for (const [ws, info] of this.subs.entries()) {
       for (const [id, filters] of Object.entries(info)) {
         for (const item of filters) {
           if (!match(ev, item)) continue;
-          try {
-            await this.onEventFn(ev);
-          } catch {
-            continue;
-          }
 
           send(ws, ["EVENT", id, ev]);
           break;
