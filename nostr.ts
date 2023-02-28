@@ -1,7 +1,6 @@
 import { ClientMessage, NostrEvent, ReqParams } from "./types.ts";
 import { encoder, hex, secp256k1 } from "./deps.ts";
 
-const MIN_POW = parseInt(Deno.env.get("MIN_POW") || "0");
 const MSG_TYPES = new Set(["REQ", "CLOSE", "EVENT", "AUTH"]);
 
 export function isEvent(ev: unknown): ev is NostrEvent {
@@ -50,7 +49,7 @@ export async function signEvent(id: string, key: string) {
   return secp256k1.utils.bytesToHex(await secp256k1.schnorr.sign(id, key));
 }
 
-export async function validateEvent(ev: NostrEvent) {
+export async function validateEvent(ev: NostrEvent, minPow = 0) {
   if (!isEvent(ev)) throw new Error("Invalid event format");
 
   // NIP-22
@@ -69,9 +68,9 @@ export async function validateEvent(ev: NostrEvent) {
 
   // NIP-13: PoW
   const pow = ev.tags.find((i) => i[0] === "nonce");
-  if (MIN_POW && pow) {
+  if (minPow && pow) {
     const diff = parseInt(pow[2]);
-    if (diff < MIN_POW) throw new Error("PoW less then " + MIN_POW);
+    if (diff < minPow) throw new Error("PoW less then " + minPow);
     const buf = hex.decode(ev.id.slice(0, Math.ceil(diff / 8) * 2));
     const str = [...buf].map((i) => i.toString(2).padStart(8, "0")).slice(diff);
     if (!str.every((i) => i === "0")) throw new Error("PoW invalid");

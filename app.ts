@@ -27,6 +27,12 @@ export class Application {
 
   upgradeWS: (req: Request) => { socket: WebSocket; response: Response };
 
+  name = "";
+  description = "";
+  pubkey = "";
+  contact = "";
+  minPow = 0;
+
   constructor(opts: ApplicationInit) {
     if (!opts.db) throw new Error("Require db");
     if (!opts.upgradeWebSocketFn) throw new Error("Require upgradeWebSocketFn");
@@ -37,6 +43,11 @@ export class Application {
     this.onAuthFn = opts.onAuth || (() => void 0);
     this.onReqFn = opts.onReq || (() => void 0);
     this.onStreamFn = opts.onStream || (() => true);
+    this.name = opts.name || "";
+    this.description = opts.description || "";
+    this.pubkey = opts.pubkey || "";
+    this.contact = opts.contact || "";
+    this.minPow = opts.minPow || 0;
   }
 
   addSocket(socket: WebSocket) {
@@ -117,7 +128,7 @@ export class Application {
     if (!isEvent(ev)) return;
 
     try {
-      await validateEvent(msg[1]);
+      await validateEvent(msg[1], this.minPow);
     } catch (err) {
       return this.send(socket, ["OK", ev.id, false, "invalid: " + err.message]);
     }
@@ -167,7 +178,7 @@ export class Application {
     if (stored[1] !== challenge) return;
 
     try {
-      await validateEvent(msg[1]);
+      await validateEvent(msg[1], this.minPow);
       await this.onAuthFn(msg[1], socket);
 
       this.send(socket, ["OK", msg[1].id, true, ""]);
@@ -184,13 +195,13 @@ export class Application {
         const host = new URL(req.url).hostname;
         return new Response(
           JSON.stringify({
-            "name": Deno.env.get("RELAY_NAME") || host,
-            "description": Deno.env.get("RELAY_DESC") || "",
-            "pubkey": Deno.env.get("ADMIN_PUBKEY") || "",
-            "contact": Deno.env.get("ADMIN_CONTACT") || "",
+            "name": this.name || host,
+            "description": this.description || "",
+            "pubkey": this.pubkey || "",
+            "contact": this.contact || "",
             "supported_nips": NIPs,
             "software": "https://github.com/xbol0/nostring",
-            "version": "v1",
+            "version": "1.0.0",
             ...await this.db.getStatistics(),
           }),
           {

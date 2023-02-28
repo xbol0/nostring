@@ -57,6 +57,7 @@ export type ApplicationInit = {
   description?: string;
   pubkey?: string;
   contact?: string;
+  minPow?: number;
   upgradeWebSocketFn: (
     req: Request,
   ) => { socket: WebSocket; response: Response };
