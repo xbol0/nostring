@@ -1,5 +1,4 @@
 export interface DataAdapter {
-  init(): Promise<void>;
   insertEvent(e: NostrEvent): Promise<void>;
   query(params: ReqParams[]): Promise<NostrEvent[]>;
   delete(ids: string[], author: string): Promise<void>;
@@ -54,16 +53,16 @@ export type RawEvent = NostrEvent & {
 
 export type ApplicationInit = {
   db: DataAdapter;
-  name: string;
-  description: string;
-  pubkey: string;
-  contact: string;
-  channel: BroadcastChannel;
+  name?: string;
+  description?: string;
+  pubkey?: string;
+  contact?: string;
   upgradeWebSocketFn: (
     req: Request,
   ) => { socket: WebSocket; response: Response };
-  onConnect: (ws: WebSocket) => unknown;
-  onEvent: (e: NostrEvent, ws: WebSocket) => unknown;
-  onAuth: (e: NostrEvent, ws: WebSocket) => unknown;
-  onReq: (id: string, filters: ReqParams[], ws: WebSocket) => unknown;
+  onConnect?: (ws: WebSocket) => unknown;
+  onEvent?: (e: NostrEvent, ws: WebSocket) => unknown;
+  onAuth?: (e: NostrEvent, ws: WebSocket) => unknown;
+  onReq?: (id: string, filters: ReqParams[], ws: WebSocket) => unknown;
+  onStream?: (e: NostrEvent, id: string, ws: WebSocket) => boolean;
 };

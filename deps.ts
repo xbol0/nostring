@@ -4,8 +4,6 @@ export * as secp256k1 from "https://esm.sh/@noble/secp256k1@1.7.1";
 export const encoder = new TextEncoder();
 export const decoder = new TextDecoder();
 
-export const nextTick = (fn: () => unknown) => setTimeout(fn, 0);
-
 import * as _hex from "https://deno.land/std@0.177.0/encoding/hex.ts";
 
 export const hex = {

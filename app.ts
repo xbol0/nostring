@@ -1,4 +1,3 @@
-import { nextTick } from "./deps.ts";
 import { checkMsg, isEvent, match, validateEvent } from "./nostr.ts";
 import type {
   ApplicationInit,
@@ -18,30 +17,26 @@ const NIPs = [1, 2, 4, 9, 11, 12, 15, 16, 20, 22, 26, 28, 33, 40];
 export class Application {
   subs = new Map<WebSocket, Record<string, ReqParams[]>>();
   challenges = new Map<WebSocket, string>();
-  channel: BroadcastChannel | null;
   db: DataAdapter;
 
-  onConnectFn: ApplicationInit["onConnect"];
-  onEventFn: ApplicationInit["onEvent"];
-  onAuthFn: ApplicationInit["onAuth"];
-  onReqFn: ApplicationInit["onReq"];
+  onConnectFn: Required<ApplicationInit>["onConnect"];
+  onEventFn: Required<ApplicationInit>["onEvent"];
+  onAuthFn: Required<ApplicationInit>["onAuth"];
+  onReqFn: Required<ApplicationInit>["onReq"];
+  onStreamFn: Required<ApplicationInit>["onStream"];
 
   upgradeWS: (req: Request) => { socket: WebSocket; response: Response };
 
-  constructor(opts: Partial<ApplicationInit>) {
+  constructor(opts: ApplicationInit) {
     if (!opts.db) throw new Error("Require db");
     if (!opts.upgradeWebSocketFn) throw new Error("Require upgradeWebSocketFn");
     this.db = opts.db;
     this.upgradeWS = opts.upgradeWebSocketFn;
-    this.channel = opts.channel ?? null;
     this.onConnectFn = opts.onConnect || (() => void 0);
     this.onEventFn = opts.onEvent || (() => void 0);
     this.onAuthFn = opts.onAuth || (() => void 0);
     this.onReqFn = opts.onReq || (() => void 0);
-  }
-
-  async init() {
-    await this.db.init();
+    this.onStreamFn = opts.onStream || (() => true);
   }
 
   addSocket(socket: WebSocket) {
@@ -60,11 +55,15 @@ export class Application {
       try {
         data = JSON.parse(ev.data);
       } catch {
+        this.send(socket, ["NOTIFY", "Invalid body"]);
         return socket.close();
       }
 
       if (!checkMsg(data)) {
-        return send(socket, ["NOTIFY", `Your data is invalid: '${ev.data}'`]);
+        return this.send(socket, [
+          "NOTIFY",
+          `Your data is invalid: '${ev.data}'`,
+        ]);
       }
 
       switch (data[0]) {
@@ -77,7 +76,10 @@ export class Application {
         case "EVENT":
           return this.onEVENT(data, socket);
         default:
-          return send(socket, ["NOTIFY", `Unsupported type: '${data[0]}'`]);
+          return this.send(socket, [
+            "NOTIFY",
+            `Unsupported type: '${data[0]}'`,
+          ]);
       }
     });
   }
@@ -90,7 +92,8 @@ export class Application {
 
     try {
       await this.onReqFn(msg[1], filters, socket);
-    } catch {
+    } catch (err) {
+      this.send(socket, ["NOTIFY", err.message]);
       return;
     }
 
@@ -102,8 +105,11 @@ export class Application {
     sub[msg[1]] = filters;
 
     const list = await this.db.query(filters);
-    list.forEach((i) => send(socket, ["EVENT", msg[1], i]));
-    send(socket, ["EOSE", msg[1]]);
+    list.forEach((i) =>
+      this.onStreamFn(i, msg[1], socket) &&
+      this.send(socket, ["EVENT", msg[1], i])
+    );
+    this.send(socket, ["EOSE", msg[1]]);
   }
 
   async onEVENT(msg: ClientEventMessage, socket: WebSocket) {
@@ -113,13 +119,13 @@ export class Application {
     try {
       await validateEvent(msg[1]);
     } catch (err) {
-      return send(socket, ["OK", ev.id, false, "invalid: " + err.message]);
+      return this.send(socket, ["OK", ev.id, false, "invalid: " + err.message]);
     }
 
     try {
       await this.onEventFn(ev, socket);
     } catch (err) {
-      return send(socket, ["OK", ev.id, false, "invalid: " + err.message]);
+      return this.send(socket, ["OK", ev.id, false, "invalid: " + err.message]);
     }
 
     // NIP-16
@@ -143,8 +149,8 @@ export class Application {
       await this.db.replaceEvent(ev);
     }
 
-    send(socket, ["OK", ev.id, true, ""]);
-    nextTick(() => this.broadcast(ev));
+    this.send(socket, ["OK", ev.id, true, ""]);
+    this.broadcast(ev);
   }
 
   onCLOSE(msg: ClientCloseMessage, socket: WebSocket) {
@@ -164,9 +170,9 @@ export class Application {
       await validateEvent(msg[1]);
       await this.onAuthFn(msg[1], socket);
 
-      send(socket, ["OK", msg[1].id, true, ""]);
+      this.send(socket, ["OK", msg[1].id, true, ""]);
     } catch (err) {
-      send(socket, ["OK", msg[1].id, false, "restricted: " + err.message]);
+      this.send(socket, ["OK", msg[1].id, false, "restricted: " + err.message]);
     } finally {
       this.challenges.delete(socket);
     }
@@ -221,24 +227,23 @@ export class Application {
   }
 
   broadcast(ev: NostrEvent) {
-    if (!this.channel) return;
     for (const [ws, info] of this.subs.entries()) {
       for (const [id, filters] of Object.entries(info)) {
         for (const item of filters) {
           if (!match(ev, item)) continue;
 
-          send(ws, ["EVENT", id, ev]);
+          this.send(ws, ["EVENT", id, ev]);
           break;
         }
       }
     }
   }
-}
 
-function send(socket: WebSocket, data: unknown[]) {
-  try {
-    socket.send(JSON.stringify(data));
-  } catch {
-    // Skip error handle
+  send(socket: WebSocket, data: unknown[]) {
+    try {
+      socket.send(JSON.stringify(data));
+    } catch {
+      // Skip error handle
+    }
   }
 }
