@@ -5,7 +5,7 @@ A simple [Nostr](https://github.com/nostr-protocol/nostr) relay library written 
 ## Features
 
 - Pure Nostr relay core
-- Multi data store provider(WIP)
+- Multi data store provider
   - [x] PostgreSQL
 - Supported NIPs
   - 01 02 04 09 11 12 15 16 20 26 28 33 40 56
@@ -79,3 +79,6 @@ const app = new Application({
 serve(app.getHandler(), { port: 9000 })
 ```
 
+## BREAKING updates
+
+~2.0.0 has many breaking features, you should migrate carefully.

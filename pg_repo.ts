@@ -20,7 +20,6 @@ export class PgRepository implements DataAdapter {
       );
       const migs = [
         this.m202302131450,
-        this.m202302231546,
       ].slice(Number(res.rows[0][0]));
 
       for (const fn of migs) {
@@ -210,12 +209,6 @@ select 'notes',count(*) from events where deleted_at is null and kind=1",
     );
     await db.queryArray(
       "create index if not exists tags_idx on events (tags)",
-    );
-  }
-
-  async m202302231546(db: pg.PoolClient) {
-    await db.queryArray(
-      "create table if not exists nip05s (pubkey bytea primary key, name text not null unique)",
     );
   }
 }
