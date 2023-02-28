@@ -225,7 +225,7 @@ export class Application {
 
       try {
         const res = this.upgradeWS(req);
-        await this.onConnectFn(res.socket);
+        await this.onConnectFn(res.socket, req);
         this.addSocket(res.socket);
         return res.response;
       } catch (err) {

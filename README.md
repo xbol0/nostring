@@ -1,16 +1,12 @@
 # Nostring
 
-**WIP**
-
-A simple pure [Nostr](https://github.com/nostr-protocol/nostr) relay written in Deno.
+A simple [Nostr](https://github.com/nostr-protocol/nostr) relay library written in Deno.
 
 ## Features
 
-- Can deployed on [Deno Deploy](https://deno.com/deploy)
-- Internal forward events by BroadcastChannel(Only on Deno Deploy)
+- Pure Nostr relay core
 - Multi data store provider(WIP)
   - [x] PostgreSQL
-- Programmable
 - Supported NIPs
   - 01 02 04 09 11 12 15 16 20 26 28 33 40 56
 
@@ -19,19 +15,9 @@ A simple pure [Nostr](https://github.com/nostr-protocol/nostr) relay written in 
 - Deno ^1.30.0
 - PostgreSQL 15 (Other database support is WIP)
 
-## Configure environments
-
-All variables are optional.
-
-- `DB_URL` defaults postgres://localhost:5432/nostring
-- `PORT` defaults 9000
-- `RELAY_NAME` NIP-11 name field
-- `RELAY_DESC` NIP-11 description field
-- `ADMIN_PUBKEY` NIP-11 pubkey field
-- `RELAY_CONTACT` NIP-11 contact field
-- `MIN_POW` NIP-13 min pow
-
 ## Usage
+
+Run directly
 
 ```
 deno task start
@@ -40,17 +26,56 @@ deno task start
 ## Use as a library
 
 ```ts
+import { Application, upgradeFn, PgRepository } from "https://deno.land/x/nostring/mod.ts"
+import { serve } from "https://deno.land/std/http/server.ts"
+
 // Your init code...
-import { Application } from "https://deno.land/x/nostring/mod.ts"
+const db = new PgRepository("YOUR DB URL")
+await db.init();
+
 const app = new Application({
+  // REQUIRED, a function convert Request to WebSocket Response
+  // You can use Deno default, or another function
+  upgradeWebSocketFn: upgradeFn,
+
+  // REQUIRED, an implement of DataAdapter
+  db,
+
+  // optional, callback of new connection request
+  // you can block a connection with throw an Error
   onConnect: (ws, req) => {},
-  onEvent: (ev) => {},
-  onAuth: (ev) => {},
+
+  // optional, callback of new Event has been validated
+  onEvent: (ev, ws) => {},
+
+  // optional, callback of client send an auth Event and validated
+  onAuth: (ev, ws) => {},
+
+  // optional, callback of new REQ subscription
+  onReq: (id, filters, ws) => {},
+
+  // optional, callback of an Event will be send to client
+  onStream: (e, id, ws) => {},
+
+  // optional, name of this relay
+  // if empty will sent hostname
+  name: "",
+
+  // optional, description of this relay
+  description: "",
+
+  // optional, pubkey of relay's owner
+  pubkey: "",
+
+  // optional, alternative contact of relay's owner
+  contact: "",
+
+  // optional, min PoW of NIP-13, default 0
+  minPow: 0,
 });
 
 // Serve
-import { serve } from "https://deno.land/std/http/server.ts"
 
-serve(app.getHandler())
+serve(app.getHandler(), { port: 9000 })
 ```
 

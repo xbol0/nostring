@@ -61,7 +61,7 @@ export type ApplicationInit = {
   upgradeWebSocketFn: (
     req: Request,
   ) => { socket: WebSocket; response: Response };
-  onConnect?: (ws: WebSocket) => unknown;
+  onConnect?: (ws: WebSocket, req: Request) => unknown;
   onEvent?: (e: NostrEvent, ws: WebSocket) => unknown;
   onAuth?: (e: NostrEvent, ws: WebSocket) => unknown;
   onReq?: (id: string, filters: ReqParams[], ws: WebSocket) => unknown;
