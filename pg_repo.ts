@@ -221,7 +221,7 @@ function makeQuery(params: ReqParams[]): [string, unknown[]] {
   };
   const makeSub = (p: ReqParams) => {
     const wheres: string[] = ["1=1"];
-    if (p.ids) {
+    if (p.ids && p.ids.length) {
       const subWheres: string[] = [];
       const fullIds = p.ids.filter((i) => i.length === 64);
       const prefixIds = p.ids.filter((i) => i.length < 64);
@@ -244,7 +244,7 @@ function makeQuery(params: ReqParams[]): [string, unknown[]] {
       }
     }
 
-    if (p.authors) {
+    if (p.authors && p.authors.length) {
       const subWheres: string[] = [];
       const fullIds = p.authors.filter((i) => i.length === 64);
       const prefixIds = p.authors.filter((i) => i.length < 64);
@@ -272,7 +272,7 @@ function makeQuery(params: ReqParams[]): [string, unknown[]] {
       }
     }
 
-    if (p.kinds) {
+    if (p.kinds && p.kinds.length) {
       wheres.push(`kind=any(${_p(p.kinds)})`);
     }
 
@@ -284,7 +284,7 @@ function makeQuery(params: ReqParams[]): [string, unknown[]] {
       wheres.push(`created_at < ${_p(new Date(p.until * 1000))}`);
     }
 
-    if (p.search) {
+    if (p.search && p.search.length) {
       wheres.push(`content like ${`%${p.search}%`}`);
     }
 
