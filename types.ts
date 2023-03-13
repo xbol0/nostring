@@ -4,24 +4,19 @@ export interface DataAdapter {
   delete(ids: string[], author: string): Promise<void>;
   replaceEvent(e: NostrEvent): Promise<void>;
   getStatistics(): Promise<Record<string, number>>;
-  getNip05(name: string): Promise<string>;
-  setNip05(pubkey: Uint8Array, name: string): Promise<void>;
-  delNip05(pubkey: Uint8Array, name: string): Promise<void>;
 }
 
-export type ReqParams = Partial<{
-  ids: string[];
-  authors: string[];
-  kinds: number[];
-  "#e": string[];
-  "#p": string[];
-  since: number;
-  until: number;
-  limit: number;
-
-  // NIP-50
-  search: string;
-}>;
+export type ReqParams = Partial<
+  {
+    ids: string[];
+    authors: string[];
+    kinds: number[];
+    since: number;
+    until: number;
+    limit: number;
+    search: string;
+  } & Record<string, string[]>
+>;
 
 export type ClientEventMessage = ["EVENT", NostrEvent];
 export type ClientReqMessage = ["REQ", string, ...ReqParams[]];
