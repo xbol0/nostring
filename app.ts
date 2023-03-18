@@ -50,7 +50,7 @@ export class Application {
       pubkey: opts.pubkey || "",
       software: "https://github.com/xbol0/nostring",
       supported_nips: [1, 2, 4, 9, 11, 12, 15, 16, 20, 22, 26, 28, 33, 40],
-      version: "2.1.1",
+      version: "2.2.0",
       ...opts.nip11,
     };
   }
