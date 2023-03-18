@@ -27,12 +27,7 @@ export class Application {
 
   upgradeWS: (req: Request) => { socket: WebSocket; response: Response };
 
-  name = "";
-  description = "";
-  pubkey = "";
-  contact = "";
   minPow = 0;
-
   nip11: Nip11;
 
   constructor(opts: ApplicationInit) {
@@ -45,16 +40,12 @@ export class Application {
     this.onAuthFn = opts.onAuth || (() => void 0);
     this.onReqFn = opts.onReq || (() => void 0);
     this.onStreamFn = opts.onStream || (() => true);
-    this.name = opts.name || "";
-    this.description = opts.description || "";
-    this.pubkey = opts.pubkey || "";
-    this.contact = opts.contact || "";
     this.minPow = opts.minPow || 0;
     this.nip11 = {
-      name: "nostring",
-      contact: "",
-      description: "",
-      pubkey: "",
+      name: opts.name || "nostring",
+      contact: opts.contact || "",
+      description: opts.description || "",
+      pubkey: opts.pubkey || "",
       software: "https://github.com/xbol0/nostring",
       supported_nips: [1, 2, 4, 9, 11, 12, 15, 16, 20, 22, 26, 28, 33, 40],
       version: "2.1.1",
