@@ -45,6 +45,13 @@ const app = new Application({
     throw new Error("")
   },
 
+  // optional, callback of new connection established
+  // If you want to make a whitelist control relay,
+  // you can send a AUTH message on this callback
+  onEstablished(ws) {
+    app.send(ws, ["AUTH", "...your challenge..."])
+  },
+
   // optional, callback of new Event has been validated
   // This callback will be triggered after validate the event,
   // so the event is legal
