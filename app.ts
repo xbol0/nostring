@@ -24,6 +24,7 @@ export class Application {
   onAuthFn: Required<ApplicationInit>["onAuth"];
   onReqFn: Required<ApplicationInit>["onReq"];
   onStreamFn: Required<ApplicationInit>["onStream"];
+  onEstablishedFn: Required<ApplicationInit>["onEstablished"];
 
   upgradeWS: (req: Request) => { socket: WebSocket; response: Response };
 
@@ -39,6 +40,7 @@ export class Application {
     this.onEventFn = opts.onEvent || (() => void 0);
     this.onAuthFn = opts.onAuth || (() => void 0);
     this.onReqFn = opts.onReq || (() => void 0);
+    this.onEstablishedFn = opts.onEstablished || (() => void 0);
     this.onStreamFn = opts.onStream || (() => true);
     this.minPow = opts.minPow || 0;
     this.nip11 = {
@@ -220,6 +222,11 @@ export class Application {
         const res = this.upgradeWS(req);
         await this.onConnectFn(res.socket, req);
         this.addSocket(res.socket);
+
+        res.socket.addEventListener("open", () => {
+          this.onEstablishedFn(res.socket);
+        }, { once: true });
+
         return res.response;
       } catch (err) {
         return new Response(err.message, {
@@ -244,10 +251,15 @@ export class Application {
   }
 
   send(socket: WebSocket, data: unknown[]) {
+    if (socket.readyState !== socket.OPEN) {
+      return;
+    }
+
     try {
       socket.send(JSON.stringify(data));
-    } catch {
+    } catch (e) {
       // Skip error handle
+      console.error(e);
     }
   }
 }
