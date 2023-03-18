@@ -3,7 +3,6 @@ export interface DataAdapter {
   query(params: ReqParams[]): Promise<NostrEvent[]>;
   delete(ids: string[], author: string): Promise<void>;
   replaceEvent(e: NostrEvent): Promise<void>;
-  getStatistics(): Promise<Record<string, number>>;
 }
 
 export type ReqParams = Partial<
@@ -46,6 +45,16 @@ export type RawEvent = NostrEvent & {
   created_at: Date;
 };
 
+export type Nip11 = {
+  "name": string;
+  "description": string;
+  "pubkey": string;
+  "contact": string;
+  "supported_nips": number[];
+  "software": string;
+  "version": string;
+};
+
 export type ApplicationInit = {
   db: DataAdapter;
   name?: string;
@@ -53,6 +62,7 @@ export type ApplicationInit = {
   pubkey?: string;
   contact?: string;
   minPow?: number;
+  nip11: Partial<Nip11>;
   upgradeWebSocketFn: (
     req: Request,
   ) => { socket: WebSocket; response: Response };

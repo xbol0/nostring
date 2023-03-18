@@ -1,4 +1,5 @@
-import { Application, PgRepository, upgradeFn } from "../mod.ts";
+import { Application } from "../mod.ts";
+import { PgRepository } from "./repo.ts";
 import { serve } from "https://deno.land/std@0.176.0/http/server.ts";
 
 const db = new PgRepository(
@@ -6,7 +7,7 @@ const db = new PgRepository(
 );
 await db.init();
 const app = new Application({
-  upgradeWebSocketFn: upgradeFn,
+  upgradeWebSocketFn: Deno.upgradeWebSocket,
   db,
 });
 const port = parseInt(Deno.env.get("PORT") || "9000");

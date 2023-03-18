@@ -7,12 +7,12 @@ import type {
   ClientMessage,
   ClientReqMessage,
   DataAdapter,
+  Nip11,
   NostrEvent,
   ReqParams,
 } from "./types.ts";
 
 const CORSHeaders = { "Access-Control-Allow-Origin": "*" };
-const NIPs = [1, 2, 4, 9, 11, 12, 15, 16, 20, 22, 26, 28, 33, 40];
 
 export class Application {
   subs = new Map<WebSocket, Record<string, ReqParams[]>>();
@@ -33,6 +33,8 @@ export class Application {
   contact = "";
   minPow = 0;
 
+  nip11: Nip11;
+
   constructor(opts: ApplicationInit) {
     if (!opts.db) throw new Error("Require db");
     if (!opts.upgradeWebSocketFn) throw new Error("Require upgradeWebSocketFn");
@@ -48,6 +50,16 @@ export class Application {
     this.pubkey = opts.pubkey || "";
     this.contact = opts.contact || "";
     this.minPow = opts.minPow || 0;
+    this.nip11 = {
+      name: "nostring",
+      contact: "",
+      description: "",
+      pubkey: "",
+      software: "https://github.com/xbol0/nostring",
+      supported_nips: [1, 2, 4, 9, 11, 12, 15, 16, 20, 22, 26, 28, 33, 40],
+      version: "2.1.1",
+      ...opts.nip11,
+    };
   }
 
   addSocket(socket: WebSocket) {
@@ -192,18 +204,8 @@ export class Application {
   getHandler() {
     return async (req: Request) => {
       if (req.headers.get("accept") === "application/nostr+json") {
-        const host = new URL(req.url).hostname;
         return new Response(
-          JSON.stringify({
-            "name": this.name || host,
-            "description": this.description || "",
-            "pubkey": this.pubkey || "",
-            "contact": this.contact || "",
-            "supported_nips": NIPs,
-            "software": "https://github.com/xbol0/nostring",
-            "version": "1.0.0",
-            ...await this.db.getStatistics(),
-          }),
+          JSON.stringify(this.nip11),
           {
             headers: {
               "content-type": "application/nostr+json",
