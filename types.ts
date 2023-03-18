@@ -62,7 +62,7 @@ export type ApplicationInit = {
   pubkey?: string;
   contact?: string;
   minPow?: number;
-  nip11: Partial<Nip11>;
+  nip11?: Partial<Nip11>;
   upgradeWebSocketFn: (
     req: Request,
   ) => { socket: WebSocket; response: Response };
