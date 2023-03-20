@@ -1,6 +1,9 @@
-import { hex, pg } from "../deps.ts";
-import { getExpires } from "../nostr.ts";
-import { DataAdapter, NostrEvent, RawEvent, ReqParams } from "../types.ts";
+import * as pg from "https://deno.land/x/postgres@v0.17.0/mod.ts";
+import * as nostring from "../mod.ts";
+import type { DataAdapter, NostrEvent, RawEvent, ReqParams } from "../mod.ts";
+
+const hex = nostring.hex;
+const { getExpires } = nostring.nostr;
 
 export class PgRepository implements DataAdapter {
   pool: pg.Pool;
