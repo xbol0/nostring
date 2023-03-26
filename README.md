@@ -11,6 +11,10 @@ export DB_URL=postgres://your-postgres-url
 deno task start
 ```
 
+## Configure
+
+[Example](env.example)
+
 ## Use as a library
 
 ```ts

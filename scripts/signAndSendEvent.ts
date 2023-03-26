@@ -1,5 +1,4 @@
-import { hex, secp256k1 } from "../deps.ts";
-import { getEventHash, signEvent } from "../nostr.ts";
+import { nostr } from "../deps.ts";
 
 function help() {
   console.log(
@@ -14,20 +13,14 @@ if (Deno.args.length > 3 || Deno.args.length < 1) {
   Deno.exit(1);
 }
 
-const data = JSON.parse(Deno.args[0]);
+const key = Deno.args[2] || Deno.env.get("NOSTR_KEY") || "";
+const data = nostr.finishEvent(JSON.parse(Deno.args[0]), key);
 const relay = Deno.args[1] || "";
-const key = Deno.args[2] || Deno.env.get("NOSTR_KEY");
 
 if (!key || !key.match(/^[a-f0-9]{64}$/)) {
   console.error("Invalid private key");
   Deno.exit(1);
 }
-
-if (!data.created_at) data.created_at = ~~(Date.now() / 1000);
-
-data.pubkey = hex.encode(secp256k1.schnorr.getPublicKey(key));
-data.id = await getEventHash(data);
-data.sig = await signEvent(data.id, key);
 
 console.log("Event data:");
 console.log(JSON.stringify(data));

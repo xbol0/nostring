@@ -1,204 +1,459 @@
-import { checkMsg, isEvent, match, validateEvent } from "./nostr.ts";
-import type {
-  ApplicationInit,
-  ClientAuthMessage,
-  ClientCloseMessage,
-  ClientEventMessage,
-  ClientMessage,
-  ClientReqMessage,
-  DataAdapter,
-  Nip11,
-  NostrEvent,
-  ReqParams,
-} from "./types.ts";
+import { handleBotMessage } from "./bot.ts";
+import { decoder, hex, http, nostr } from "./deps.ts";
+import { PgRepo } from "./pg.ts";
+import { EventRetention, Limits, Nip11, Repository } from "./types.ts";
+import { parseEventRetention, parseFeeConfigure } from "./util.ts";
 
 const CORSHeaders = { "Access-Control-Allow-Origin": "*" };
 
+// Default supported NIPs
+// Currently not suppported NIP-50
+const DefaultNIPs = "1,9,11,12,13,15,16,20,22,26,33,40,42";
+
+// From 6 hours ago to 5 minutes from now
+const DefaultTimeRange = "-28800~300";
+
 export class Application {
-  subs = new Map<WebSocket, Record<string, ReqParams[]>>();
+  subs = new Map<WebSocket, Record<string, nostr.Filter[]>>();
   challenges = new Map<WebSocket, string>();
-  db: DataAdapter;
+  authed = new Map<WebSocket, string>();
 
-  onConnectFn: Required<ApplicationInit>["onConnect"];
-  onEventFn: Required<ApplicationInit>["onEvent"];
-  onAuthFn: Required<ApplicationInit>["onAuth"];
-  onReqFn: Required<ApplicationInit>["onReq"];
-  onStreamFn: Required<ApplicationInit>["onStream"];
-  onEstablishedFn: Required<ApplicationInit>["onEstablished"];
-
-  upgradeWS: (req: Request) => { socket: WebSocket; response: Response };
-
-  minPow = 0;
+  port: number;
+  repo: Repository;
   nip11: Nip11;
+  limits: Limits;
+  createdAtRange: number[];
+  botKey: string;
+  botPubkey: string;
+  relays: string[] = [];
+  pool: nostr.SimplePool;
+  retentions: EventRetention[] = [];
+  env: Record<string, string> = {};
 
-  constructor(opts: ApplicationInit) {
-    if (!opts.db) throw new Error("Require db");
-    if (!opts.upgradeWebSocketFn) throw new Error("Require upgradeWebSocketFn");
-    this.db = opts.db;
-    this.upgradeWS = opts.upgradeWebSocketFn;
-    this.onConnectFn = opts.onConnect || (() => void 0);
-    this.onEventFn = opts.onEvent || (() => void 0);
-    this.onAuthFn = opts.onAuth || (() => void 0);
-    this.onReqFn = opts.onReq || (() => void 0);
-    this.onEstablishedFn = opts.onEstablished || (() => void 0);
-    this.onStreamFn = opts.onStream || (() => true);
-    this.minPow = opts.minPow || 0;
+  // Whitelist pubkeys
+  pubkeys: string[] = [];
+
+  constructor() {
+    const env = Deno.env.toObject();
+    this.env = env;
+
+    this.repo = new PgRepo(
+      env.DB_URL || "postgres://localhost:5432/nostring",
+      this,
+    );
+
+    this.createdAtRange = (env.EVENT_TIEMSTAMP_RANGE || DefaultTimeRange)
+      .split("~").map(parseInt);
+    if (this.createdAtRange.length !== 2) {
+      throw new Error("Invalid createdAt range");
+    }
+
+    this.botKey = env.RELAY_BOT_KEY;
+
+    if (this.botKey && !/^[a-f0-9]{64}$/.test(this.botKey)) {
+      throw new Error("Invalid bot key");
+    } else {
+      this.botPubkey = nostr.getPublicKey(this.botKey);
+    }
+
+    this.port = parseInt(env.PORT || "9000");
     this.nip11 = {
-      name: opts.name || "nostring",
-      contact: opts.contact || "",
-      description: opts.description || "",
-      pubkey: opts.pubkey || "",
+      name: env.RELAY_NAME || "nostring",
+      contact: env.ADMIN_CONTACT || "",
+      description: env.RELAY_DESC || "",
+      pubkey: env.ADMIN_PUBKEY || "",
       software: "https://github.com/xbol0/nostring",
-      supported_nips: [1, 2, 4, 9, 11, 12, 15, 16, 20, 22, 26, 28, 33, 40],
-      version: "2.2.0",
-      ...opts.nip11,
+      supported_nips: (env.NIPS || DefaultNIPs).split(",")
+        .map((i) => parseInt(i)),
+      version: "3.0.0",
     };
+    this.limits = {
+      maxMessageLength: parseInt(env.MAX_MESSAGE_LENGTH) || 393216,
+      maxSubscriptions: parseInt(env.MAX_SUBSCRIPTIONS) || 32,
+      maxFilters: parseInt(env.MAX_FILTERS) || 10,
+      maxLimit: parseInt(env.MAX_LIMIT) || 500,
+      maxSubidLength: parseInt(env.MAX_SUBID_LENGTH) || 64,
+      minPrefix: parseInt(env.MIN_PREFIX) || 32,
+      maxEventTags: parseInt(env.MAX_EVENT_TAGS) || 2048,
+      maxContentLength: parseInt(env.MAX_CONTENT_LENGTH) || 102400,
+      minPowDifficulty: parseInt(env.MIN_POW_DIFFICULTY) || 0,
+      authRequired: env.AUTH_REQUIRED === "true",
+      paymentRequired: env.PAYMENT_REQUIRED === "true",
+    };
+
+    const arr = (env.BROADCAST_RELAYS || "").split(",");
+    this.pool = new nostr.SimplePool();
+
+    arr.forEach((i) => {
+      if (/^wss?\:\/\//.test(i)) {
+        this.relays.push(i);
+        this.pool.ensureRelay(i).then((relay) => {
+          console.log(`Broadcast relay ready: ${relay.url}`);
+        });
+      }
+    });
+
+    if (env.EVENT_RETENTION) {
+      this.retentions = parseEventRetention(env.EVENT_RETENTION);
+    }
+
+    if (env.WHITELIST_PUBKEYS) {
+      const keys = env.WHITELIST_PUBKEYS.split(",");
+
+      for (const i of keys) {
+        if (/^[a-f0-9]{64}$/.test(i)) this.pubkeys.push(i);
+      }
+    }
   }
 
   addSocket(socket: WebSocket) {
+    socket.addEventListener("open", () => {
+      if (this.limits.authRequired) {
+        this.sendAuth(socket);
+      }
+    }, { once: true });
+
     socket.addEventListener("error", () => {
       this.subs.delete(socket);
       this.challenges.delete(socket);
+      this.authed.delete(socket);
     });
 
     socket.addEventListener("close", () => {
       this.subs.delete(socket);
       this.challenges.delete(socket);
+      this.authed.delete(socket);
     });
 
     socket.addEventListener("message", (ev) => {
-      let data: ClientMessage;
-      try {
-        data = JSON.parse(ev.data);
-      } catch {
-        this.send(socket, ["NOTIFY", "Invalid body"]);
-        return socket.close();
-      }
+      let data: [string, ...unknown[]];
 
-      if (!checkMsg(data)) {
+      const str = typeof ev.data === "string"
+        ? ev.data
+        : decoder.decode(ev.data);
+
+      if (
+        this.limits.maxMessageLength &&
+        str.length > this.limits.maxMessageLength
+      ) {
         return this.send(socket, [
           "NOTIFY",
-          `Your data is invalid: '${ev.data}'`,
+          "Message body size out of limits: " + this.limits.maxMessageLength,
         ]);
+      }
+
+      try {
+        data = JSON.parse(str);
+
+        if (!Array.isArray(data)) {
+          throw new Error("Not an Array");
+        }
+
+        if (data.length < 2) {
+          throw new Error("Array length should greater than 2");
+        }
+
+        if (typeof data[0] !== "string") {
+          throw new Error("Invalid message type");
+        }
+
+        if (
+          data[0] === "EVENT" &&
+          !nostr.validateEvent(data[1] as nostr.UnsignedEvent)
+        ) {
+          throw new Error("Invalid event message");
+        }
+
+        if (
+          data[0] === "AUTH" &&
+          !nostr.validateEvent(data[1] as nostr.UnsignedEvent)
+        ) {
+          throw new Error("Invalid auth message");
+        }
+
+        if (data[0] === "CLOSE" && typeof data[1] !== "string") {
+          throw new Error("Invalid close message");
+        }
+
+        if (data[0] === "REQ") {
+          if (typeof data[1] !== "string") {
+            throw new Error("Invalid req message");
+          }
+
+          if (data[1].length > this.limits.maxSubidLength) {
+            throw new Error("Subscription ID out of limit");
+          }
+
+          if (data.length < 3) {
+            throw new Error("Invalid req message");
+          }
+
+          if (!data.slice(2).every((i) => typeof i === "object" && i)) {
+            throw new Error("Invalid req message");
+          }
+        }
+      } catch (e) {
+        return this.send(socket, ["NOTIFY", "Invalid body: " + e.message]);
       }
 
       switch (data[0]) {
         case "REQ":
-          return this.onREQ(data, socket);
+          return this.onREQ(
+            data[1] as string,
+            data.slice(2) as nostr.Filter[],
+            socket,
+          );
         case "CLOSE":
-          return this.onCLOSE(data, socket);
+          return this.onCLOSE(data[1] as string, socket);
         case "AUTH":
-          return this.onAUTH(data, socket);
+          return this.onAUTH(data[1] as nostr.Event, socket);
         case "EVENT":
-          return this.onEVENT(data, socket);
+          return this.onEVENT(data[1] as nostr.Event, socket);
         default:
-          return this.send(socket, [
-            "NOTIFY",
-            `Unsupported type: '${data[0]}'`,
-          ]);
+          return this.send(socket, ["NOTIFY", `Unknown type: '${data[0]}'`]);
       }
     });
   }
 
-  async onREQ(msg: ClientReqMessage, socket: WebSocket) {
-    if (typeof msg[1] !== "string") return;
-    const filters = msg.slice(2)
-      .filter((i) => typeof i === "object") as ReqParams[];
-    if (filters.length === 0) return;
-
-    try {
-      await this.onReqFn(msg[1], filters, socket);
-    } catch (err) {
-      this.send(socket, ["NOTIFY", err.message]);
-      return;
-    }
-
+  async onREQ(id: string, filters: nostr.Filter[], socket: WebSocket) {
     let sub = this.subs.get(socket);
     if (!sub) {
       sub = {};
       this.subs.set(socket, sub);
     }
-    sub[msg[1]] = filters;
 
-    const list = await this.db.query(filters);
-    list.forEach((i) =>
-      this.onStreamFn(i, msg[1], socket) &&
-      this.send(socket, ["EVENT", msg[1], i])
-    );
-    this.send(socket, ["EOSE", msg[1]]);
+    if (
+      this.limits.maxSubscriptions &&
+      Object.keys(sub).length > this.limits.maxSubscriptions
+    ) {
+      return this.send(socket, [
+        "NOTIFY",
+        `${id}: Connection subscriptions out of limit`,
+      ]);
+    }
+
+    if (this.limits.maxFilters && filters.length > this.limits.maxFilters) {
+      return this.send(socket, [
+        "NOTIFY",
+        `${id}: Subscription filters out of limit`,
+      ]);
+    }
+
+    for (const i of filters) {
+      if (i.kinds?.includes(4)) {
+        if (!this.authed.has(socket)) {
+          this.send(socket, [
+            "NOTIFY",
+            `${id}: Kind 4 subscription needs authentication`,
+          ]);
+
+          return this.sendAuth(socket);
+        }
+      }
+
+      if (Object.keys(i).filter((j) => j != "limit").length === 0) {
+        return this.send(socket, ["NOTIFY", "DO not pass empty filter"]);
+      }
+    }
+
+    sub[id] = filters;
+
+    for (const f of filters) {
+      try {
+        (await this.repo.query(f))
+          .forEach((i) => this.send(socket, ["EVENT", id, i]));
+      } catch (e) {
+        console.error(e);
+        this.send(socket, ["NOTIFY", `${id}: ${e.message}`]);
+
+        await this.report(`REQ Error: ${e.message}
+Filter: ${JSON.stringify(f, null, 2)}
+Time: ${new Date().toISOString()}`);
+      }
+    }
+
+    this.send(socket, ["EOSE", id]);
   }
 
-  async onEVENT(msg: ClientEventMessage, socket: WebSocket) {
-    const ev = msg[1];
-    if (!isEvent(ev)) return;
+  async onEVENT(ev: nostr.Event, socket: WebSocket) {
+    if (ev.content.length > this.limits.maxContentLength) {
+      return this.send(socket, ["NOTIFY", "Content length out of limit"]);
+    }
 
-    try {
-      await validateEvent(msg[1], this.minPow);
-    } catch (err) {
-      return this.send(socket, ["OK", ev.id, false, "invalid: " + err.message]);
+    if (ev.kind < 0 || ev.kind >= 40000) {
+      return this.send(socket, ["OK", ev.id, false, "invalid: Unknown kind"]);
+    }
+
+    if (ev.content.length > this.limits.maxContentLength) {
+      return this.send(socket, [
+        "OK",
+        ev.id,
+        false,
+        "invalid: Content length out of limit",
+      ]);
+    }
+
+    if (ev.tags.length > this.limits.maxEventTags) {
+      return this.send(socket, [
+        "OK",
+        ev.id,
+        false,
+        "invalid: Event count out of limit",
+      ]);
+    }
+
+    // NIP-22
+    const now = ~~(Date.now() / 1000);
+    if (
+      ev.created_at > now + this.createdAtRange[1] ||
+      ev.created_at < now + this.createdAtRange[0]
+    ) {
+      return this.send(socket, [
+        "OK",
+        ev.id,
+        false,
+        "invalid: created_at field is out of the acceptable range",
+      ]);
+    }
+
+    if (!nostr.verifySignature(ev)) {
+      return this.send(socket, [
+        "OK",
+        ev.id,
+        false,
+        "invalid: Unverified signature",
+      ]);
+    }
+
+    // NIP-13: PoW
+    if (this.limits.minPowDifficulty) {
+      const pow = ev.tags.find((i) => i[0] === "nonce");
+      if (!pow) {
+        return this.send(socket, [
+          "NOTIFY",
+          "PoW less then " + this.limits.minPowDifficulty,
+        ]);
+      }
+      const diff = parseInt(pow[2]);
+      if (diff < this.limits.minPowDifficulty) {
+        return this.send(socket, [
+          "NOTIFY",
+          "PoW less then " + this.limits.minPowDifficulty,
+        ]);
+      }
+
+      const buf = hex.decode(ev.id.slice(0, Math.ceil(diff / 8) * 2));
+      const str = [...buf].map((i) => i.toString(2).padStart(8, "0")).slice(
+        diff,
+      );
+      if (!str.every((i) => i === "0")) {
+        return this.send(socket, ["NOTIFY", "Invalid POW"]);
+      }
+    }
+
+    // NIP-26
+    if (ev.tags.find((i) => i[0] === "delegation")) {
+      if (!nostr.nip26.getDelegator(ev)) {
+        return this.send(socket, ["NOTIFY", "Invalid delegation"]);
+      }
     }
 
     try {
-      await this.onEventFn(ev, socket);
+      await this.repo.save(ev);
     } catch (err) {
-      return this.send(socket, ["OK", ev.id, false, "invalid: " + err.message]);
-    }
-
-    // NIP-16
-    if (ev.kind < 10000) {
-      // NIP-01
-      if (ev.kind === 0) {
-        await this.db.replaceEvent(ev);
-      } else {
-        await this.db.insertEvent(ev);
-      }
-
-      // NIP-09 event deletion
-      if (ev.kind === 5) {
-        const list = ev.tags.filter((i) => i[0] === "e").map((i) => i[1]);
-        await this.db.delete(list, ev.pubkey);
-      }
-    } else if (ev.kind >= 10000 && ev.kind < 20000) {
-      await this.db.replaceEvent(ev);
-    } else if (ev.kind >= 30000 && ev.kind < 40000) {
-      // NIP-33
-      await this.db.replaceEvent(ev);
+      this.send(socket, ["OK", ev.id, false, `invalid: ${err.message}`]);
     }
 
     this.send(socket, ["OK", ev.id, true, ""]);
+    this.notify(ev);
+
+    if (
+      ev.pubkey === this.nip11.pubkey && ev.kind === 4 && this.botKey &&
+      ev.tags.find((i) => i[0] === "p")?.[1] === this.botPubkey
+    ) {
+      // handle admin to bot commands
+      handleBotMessage(ev, this);
+      return;
+    }
     this.broadcast(ev);
   }
 
-  onCLOSE(msg: ClientCloseMessage, socket: WebSocket) {
-    delete this.subs.get(socket)?.[msg[1]];
+  onCLOSE(id: string, socket: WebSocket) {
+    delete this.subs.get(socket)?.[id];
   }
 
-  async onAUTH(msg: ClientAuthMessage, socket: WebSocket) {
-    if (typeof msg !== "object") return;
-
-    if (msg[1].kind !== 22242) return;
-    const stored = msg[1].tags.find((i) => i[0] === "challenge");
+  onAUTH(ev: nostr.Event, socket: WebSocket) {
+    if (ev.kind !== 22242) return;
+    const stored = ev.tags.find((i) => i[0] === "challenge");
     if (!stored) return;
     const challenge = this.challenges.get(socket);
     if (stored[1] !== challenge) return;
 
-    try {
-      await validateEvent(msg[1], this.minPow);
-      await this.onAuthFn(msg[1], socket);
-
-      this.send(socket, ["OK", msg[1].id, true, ""]);
-    } catch (err) {
-      this.send(socket, ["OK", msg[1].id, false, "restricted: " + err.message]);
-    } finally {
-      this.challenges.delete(socket);
+    if (!nostr.verifySignature(ev)) {
+      return this.send(socket, [
+        "OK",
+        ev.id,
+        false,
+        "invalid: Unverified signature",
+      ]);
     }
+
+    this.authed.set(socket, ev.pubkey);
+    this.challenges.delete(socket);
+    this.send(socket, ["OK", ev.id, true, ""]);
   }
 
   getHandler() {
-    return async (req: Request) => {
+    return (req: Request) => {
+      if (req.method === "OPTIONS") {
+        return new Response(null, { headers: CORSHeaders });
+      }
+
       if (req.headers.get("accept") === "application/nostr+json") {
+        const url = new URL(req.url);
+        const paymentUrl = new URL("/payments", url.origin);
+        const info: Record<string, unknown> = {
+          ...this.nip11,
+          limitation: this.limits,
+          payments_url: paymentUrl.href,
+          fees: {
+            admission: this.env.FEES_ADMISSION
+              ? parseFeeConfigure(this.env.FEES_ADMISSION)
+              : [],
+            subscription: this.env.FEES_SUBSCRIPTION
+              ? parseFeeConfigure(this.env.FEES_SUBSCRIPTION)
+              : [],
+            publication: this.env.FEES_PUBLICATION
+              ? parseFeeConfigure(this.env.FEES_PUBLICATION)
+              : [],
+          },
+        };
+
+        if (this.retentions.length) {
+          info.retention = this.retentions;
+        }
+
+        if (this.env.RELAY_COUNTRIES) {
+          const arr = this.env.RELAY_COUNTRIES.split(",").filter((i) => i);
+          if (arr.length) info.relay_countries = arr;
+        }
+
+        if (this.env.LANGUAGE_TAGS) {
+          const arr = this.env.LANGUAGE_TAGS.split(",").filter((i) => i);
+          if (arr.length) info.language_tags = arr;
+        }
+
+        if (this.env.TAGS) {
+          const arr = this.env.TAGS.split(",").filter((i) => i);
+          if (arr.length) info.tags = arr;
+        }
+
+        if (this.env.POSTING_POLICY) {
+          info.posting_policy = this.env.POSTING_POLICY;
+        }
+
         return new Response(
-          JSON.stringify(this.nip11),
+          JSON.stringify(info),
           {
             headers: {
               "content-type": "application/nostr+json",
@@ -218,42 +473,25 @@ export class Application {
         );
       }
 
-      try {
-        const res = this.upgradeWS(req);
-        await this.onConnectFn(res.socket, req);
-        this.addSocket(res.socket);
+      const { socket, response } = Deno.upgradeWebSocket(req);
+      this.addSocket(socket);
 
-        res.socket.addEventListener("open", () => {
-          this.onEstablishedFn(res.socket);
-        }, { once: true });
-
-        return res.response;
-      } catch (err) {
-        return new Response(err.message, {
-          status: 400,
-          headers: { "content-type": "text/plain", ...CORSHeaders },
-        });
-      }
+      return response;
     };
   }
 
-  broadcast(ev: NostrEvent) {
+  notify(ev: nostr.Event) {
     for (const [ws, info] of this.subs.entries()) {
       for (const [id, filters] of Object.entries(info)) {
-        for (const item of filters) {
-          if (!match(ev, item)) continue;
-
+        if (nostr.matchFilters(filters, ev)) {
           this.send(ws, ["EVENT", id, ev]);
-          break;
         }
       }
     }
   }
 
   send(socket: WebSocket, data: unknown[]) {
-    if (socket.readyState !== socket.OPEN) {
-      return;
-    }
+    if (socket.readyState !== socket.OPEN) return;
 
     try {
       socket.send(JSON.stringify(data));
@@ -261,5 +499,38 @@ export class Application {
       // Skip error handle
       console.error(e);
     }
+  }
+
+  sendAuth(socket: WebSocket) {
+    const c = crypto.randomUUID();
+    this.challenges.set(socket, c);
+    this.send(socket, ["AUTH", c]);
+  }
+
+  async report(s: string) {
+    if (!this.botKey || !this.nip11.pubkey) return;
+    try {
+      const ev = nostr.finishEvent({
+        kind: 4,
+        created_at: ~~(Date.now() / 1000),
+        tags: [["p", this.nip11.pubkey]],
+        content: await nostr.nip04.encrypt(this.botKey, this.nip11.pubkey, s),
+      }, this.botKey);
+
+      await this.repo.save(ev);
+      this.notify(ev);
+    } catch (e) {
+      console.error("REPORT Error:", e);
+    }
+  }
+
+  broadcast(e: nostr.Event) {
+    if (!this.relays.length) return;
+    this.pool.publish(this.relays, e);
+  }
+
+  async serve() {
+    await this.repo.init();
+    http.serve(this.getHandler(), { port: this.port });
   }
 }
