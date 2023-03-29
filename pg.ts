@@ -59,7 +59,7 @@ export class PgRepo implements Repository {
 
       await db.queryArray(
 "insert into events (id,kind,pubkey,content,tags,sig,created_at,expired_at,delegator,dtag) values \
-        ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
+        ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) on conflict do nothing",
         [
           e.id,
           e.kind,
@@ -114,13 +114,14 @@ export class PgRepo implements Repository {
 
         for (const item of filter.authors) {
           if (
-            this.app.limits.minPrefix && item.length < this.app.limits.minPrefix
+            this.app.limits.minPrefix && item &&
+            item.length < this.app.limits.minPrefix
           ) {
             throw new Error(
               `Prefix query less than ${this.app.limits.minPrefix}`,
             );
           }
-          if (item.length > 64) continue;
+          if (item && item.length > 64) continue;
 
           subs.push(`pubkey like $${i} or delegator like $${i++}`);
           args.push(`${item}%`);
@@ -132,7 +133,7 @@ export class PgRepo implements Repository {
       }
 
       if (filter.kinds && filter.kinds.length) {
-        if (filter.kinds.length > 10) throw new Error("Too many kinds");
+        if (filter.kinds.length > 20) throw new Error("Too many kinds");
 
         wheres.push(`kind=any($${i++})`);
         args.push(filter.kinds);
@@ -350,7 +351,7 @@ create table if not exists "pubkeys" (
 );
 
 create table if not exists "invoices" (
-  id uuid primary key,
+  id text primary key,
   pubkey text not null,
   bolt11 text not null,
   amount bigint not null default 0,

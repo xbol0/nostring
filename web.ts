@@ -1,4 +1,5 @@
 import { Application } from "./app.ts";
+import { nostr } from "./deps.ts";
 
 export const HtmlTemplate = `
 <!DOCTYPE html>
@@ -34,6 +35,8 @@ export async function render(req: Request, app: Application) {
       name: app.nip11.name,
       adminName: json.name,
       url: u.href,
+      botName: app.bot?.meta.username || "bot",
+      botPubkey: nostr.getPublicKey(app.bot?.key || ""),
     }));
   }
 
@@ -56,6 +59,7 @@ function renderHome(params: Record<string, string>) {
   <h2>About this relay</h2>
   <p>Relay URL: ${params.url}</p>
   <p>Relay admin: <a href="nostr:${params.adminNprofile}">@${params.adminName}</a></p>
+  <p>Relay BOT: <a href="nostr:${params.botPubkey}">@${params.botName}</a></p>
 </main>
       `,
     );

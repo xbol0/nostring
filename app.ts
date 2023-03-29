@@ -407,7 +407,7 @@ Time: ${new Date().toISOString()}`);
 
     if (
       ev.kind === 9735 && this.payment && ev.pubkey === this.payment.pubkey &&
-      ev.tags.find((i) => i[0] === "p")?.[1] === this.botKey
+      ev.tags.find((i) => i[0] === "p")?.[1] === this.botPubkey
     ) {
       handlePayment(this, ev);
     }

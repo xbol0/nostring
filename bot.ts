@@ -27,9 +27,8 @@ async function sendInvoice(e: nostr.Event, app: Application) {
       amount: app.defaultPlan.amount,
       bolt11: invoice.bolt11,
       paid_at: null,
-      description: e.pubkey + "'s fee of " + app.defaultPlan.period
-        ? "subscription"
-        : "admission",
+      description: e.pubkey + "'s fee of " +
+        (app.defaultPlan.period ? "subscription" : "admission"),
       expired_at: invoice.expiry,
       pubkey: e.pubkey,
     });
@@ -52,7 +51,8 @@ async function sendInvoice(e: nostr.Event, app: Application) {
     msg += "\n" + invoice.bolt11;
 
     return await app.bot.send(e.pubkey, msg);
-  } catch {
+  } catch (e) {
+    console.error(e);
     return;
   }
 }
@@ -108,7 +108,7 @@ export class Bot {
   async send(pubkey: string, msg: string, tags?: string[][]) {
     const e = nostr.finishEvent({
       kind: 4,
-      tags: [["p", "pubkey"], ...(tags || [])],
+      tags: [["p", pubkey], ...(tags || [])],
       created_at: ~~(Date.now() / 1000),
       content: await nostr.nip04.encrypt(this.key, pubkey, msg),
     }, this.key);
