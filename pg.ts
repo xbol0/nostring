@@ -1,6 +1,6 @@
 import { Application } from "./app.ts";
 import { nostr, pg } from "./deps.ts";
-import { Repository } from "./types.ts";
+import { Invoice, Repository } from "./types.ts";
 import { makeCollection } from "./util.ts";
 
 export class PgRepo implements Repository {
@@ -202,6 +202,11 @@ export class PgRepo implements Repository {
         "delete from events where expired_at<current_timestamp",
       );
 
+      // Delete expired invoices
+      await db.queryArray(
+        "delete from invoices where expired_at<current_timestamp",
+      );
+
       if (!pubkey) return;
       if (pubkey && this.app.pubkeys.includes(pubkey)) return;
       if (pubkey === this.app.nip11.pubkey) return;
@@ -246,6 +251,75 @@ order by created_at desc offset $2 limit 1)",
       }
     });
   }
+
+  async createInvoice(invoice: Invoice) {
+    if (!invoice.id) invoice.id = crypto.randomUUID();
+    await this.use((db) =>
+      db.queryArray(
+"insert into invoices (id,pubkey,bolt11,amount, \
+description,paid_at,expired_at) values (\
+$id,$pubkey,$bolt11,$amount,\
+$description,$paid_at,$expired_at) on conflict do nothing",
+        invoice,
+      )
+    );
+  }
+
+  async getInvoice(id: string) {
+    return await this.use(async (db) => {
+      const res = await db.queryObject<Invoice>(
+"select id,pubkey,bolt11,amount,\
+description,paid_at,expired_at from invoices where id=$1",
+        [id],
+      );
+
+      if (!res.rows.length) throw new Error("Not found invoice: " + id);
+      return res.rows[0];
+    });
+  }
+
+  async resolveInvoice(id: string) {
+    await this.use(async (db) => {
+      const tx = db.createTransaction("invoice:" + id);
+      await tx.begin();
+
+      const res = await tx.queryObject<Invoice>(
+        "select pubkey,amount,paid_at,expired_at from invoices where id=$1 for update",
+        [id],
+      );
+
+      if (!res.rows.length) {
+        await tx.rollback();
+        throw new Error("Invoice not found");
+      }
+
+      const invoice = res.rows[0];
+
+      if (invoice.paid_at !== null) {
+        await tx.rollback();
+        throw new Error("Invoice has been paid");
+      }
+
+      if (invoice.expired_at.getTime() < Date.now()) {
+        await tx.rollback();
+        throw new Error("Invoice has been expired");
+      }
+
+      await tx.queryArray(
+        "update invoices set paid_at=now() where id=$1",
+        [id],
+      );
+
+      await tx.queryArray(
+"insert into pubkeys (pubkey,balance,is_admitted,tos_accepted_at) \
+values ($1,$2,$3,now()) on conflict (pubkey) do update set \
+balance=balance+$2,is_admitted=$3",
+        [invoice.pubkey, invoice.amount, true],
+      );
+
+      await tx.commit();
+    });
+  }
 }
 
 const InitSQL = `
@@ -279,12 +353,9 @@ create table if not exists "invoices" (
   id uuid primary key,
   pubkey text not null,
   bolt11 text not null,
-  amount_requested bigint not null default 0,
-  amount_paid bigint not null default 0,
-  unit text not null default 'sats',
-  status smallint not null default 0,
+  amount bigint not null default 0,
   description text not null,
-  confirmed_at timestamp default null,
+  paid_at timestamp default null,
   expired_at timestamp not null
 );
 

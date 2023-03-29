@@ -8,12 +8,11 @@ const ER = z.object({
 
 const Fee = z.object({
   amount: z.number().min(0),
-  unit: z.string(),
   period: z.number().optional(),
   kinds: z.number().array().optional(),
 });
 
-type FeeType = z.infer<typeof Fee>;
+export type FeeType = z.infer<typeof Fee>;
 
 export function parseEventRetention(input: string) {
   return ER.parse(JSON.parse(input));
@@ -38,7 +37,6 @@ function getRangeNumbers(arr: number[]): number[] {
   return range;
 }
 
-const Units = new Set(["msats", "sats", "btc"]);
 export function parseFeeConfigure(str: string): FeeType[] {
   const arr = str.split(";");
   const list: FeeType[] = [];
@@ -47,15 +45,9 @@ export function parseFeeConfigure(str: string): FeeType[] {
     const a = s.split("/");
 
     if (a.length === 1) {
-      const m = a[0].match(/^(\d+)([^\d]+)$/);
-      if (!m) throw new Error("Invalid format: amount");
-      if (!Units.has(a[2])) throw new Error("Invalid format: unit");
-      return { amount: parseInt(m[1]), unit: m[2] };
+      return { amount: parseInt(a[0]) };
     } else if (a.length === 2) {
-      const m = a[0].match(/^(\d+)([^\d]+)$/);
-      if (!m) throw new Error("Invalid format: amount");
-      if (!Units.has(a[2])) throw new Error("Invalid format: unit");
-      return { amount: parseInt(m[1]), unit: m[2], period: parseInt(a[1]) };
+      return { amount: parseInt(a[0]), period: parseInt(a[1]) };
     } else {
       throw new Error("Invalid format: amount");
     }
@@ -73,4 +65,37 @@ export function parseFeeConfigure(str: string): FeeType[] {
   }
 
   return list;
+}
+
+// Generate by ChatGPT 🥰
+export function formatSeconds(seconds: number): string {
+  const year = Math.floor(seconds / 31536000);
+  const month = Math.floor((seconds % 31536000) / 2592000);
+  const day = Math.floor(((seconds % 31536000) % 2592000) / 86400);
+  const hour = Math.floor((((seconds % 31536000) % 2592000) % 86400) / 3600);
+  const minute = Math.floor(
+    ((((seconds % 31536000) % 2592000) % 86400) % 3600) / 60,
+  );
+  const second = ((((seconds % 31536000) % 2592000) % 86400) % 3600) % 60;
+
+  let result = "";
+  if (year > 0) {
+    result = `${year} year${year > 1 ? "s" : ""}`;
+  }
+  if (month > 0) {
+    result += ` ${month} month${month > 1 ? "s" : ""}`;
+  }
+  if (day > 0) {
+    result += ` ${day} day${day > 1 ? "s" : ""}`;
+  }
+  if (hour > 0) {
+    result += ` ${hour} hour${hour > 1 ? "s" : ""}`;
+  }
+  if (minute > 0) {
+    result += ` ${minute} minute${minute > 1 ? "s" : ""}`;
+  }
+  if (second > 0) {
+    result += ` ${second} second${second > 1 ? "s" : ""}`;
+  }
+  return result.trim();
 }

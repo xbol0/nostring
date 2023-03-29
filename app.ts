@@ -1,25 +1,22 @@
-import { handleBotMessage } from "./bot.ts";
+import { Bot, handleBotMessage } from "./bot.ts";
+import { DefaultNIPs, DefaultTimeRange } from "./constant.ts";
 import { decoder, hex, http, nostr } from "./deps.ts";
+import { getHandler } from "./handler.ts";
+import { handlePayment, LnurlPayment } from "./lnurl.ts";
 import { PgRepo } from "./pg.ts";
 import { EventRetention, Limits, Nip11, Repository } from "./types.ts";
-import { parseEventRetention, parseFeeConfigure } from "./util.ts";
-
-const CORSHeaders = { "Access-Control-Allow-Origin": "*" };
-
-// Default supported NIPs
-// Currently not suppported NIP-50
-const DefaultNIPs = "1,9,11,12,13,15,16,20,22,26,33,40,42";
-
-// From 6 hours ago to 5 minutes from now
-const DefaultTimeRange = "-28800~300";
+import { FeeType, parseEventRetention, parseFeeConfigure } from "./util.ts";
 
 export class Application {
   subs = new Map<WebSocket, Record<string, nostr.Filter[]>>();
   challenges = new Map<WebSocket, string>();
   authed = new Map<WebSocket, string>();
 
-  port: number;
   repo: Repository;
+  payment: LnurlPayment | null = null;
+  bot: Bot | null = null;
+
+  port: number;
   nip11: Nip11;
   limits: Limits;
   createdAtRange: number[];
@@ -33,6 +30,14 @@ export class Application {
   // Whitelist pubkeys
   pubkeys: string[] = [];
 
+  // Payment settings
+  fees = {
+    admission: [] as FeeType[],
+    subscription: [] as FeeType[],
+    publication: [] as FeeType[],
+  };
+  defaultPlan: FeeType | null = null;
+
   constructor() {
     const env = Deno.env.toObject();
     this.env = env;
@@ -42,18 +47,18 @@ export class Application {
       this,
     );
 
+    if (env.PAYMENT_LNURL) {
+      if (!env.RELAY_BOT_KEY) {
+        throw new Error("You should setup a RELAY_BOT_KEY for handle payment.");
+      }
+
+      this.payment = new LnurlPayment(this);
+    }
+
     this.createdAtRange = (env.EVENT_TIEMSTAMP_RANGE || DefaultTimeRange)
       .split("~").map(parseInt);
     if (this.createdAtRange.length !== 2) {
       throw new Error("Invalid createdAt range");
-    }
-
-    this.botKey = env.RELAY_BOT_KEY;
-
-    if (this.botKey && !/^[a-f0-9]{64}$/.test(this.botKey)) {
-      throw new Error("Invalid bot key");
-    } else {
-      this.botPubkey = nostr.getPublicKey(this.botKey);
     }
 
     this.port = parseInt(env.PORT || "9000");
@@ -103,6 +108,31 @@ export class Application {
       for (const i of keys) {
         if (/^[a-f0-9]{64}$/.test(i)) this.pubkeys.push(i);
       }
+    }
+
+    if (env.FEES_ADMISSION) {
+      this.fees.admission = parseFeeConfigure(env.FEES_ADMISSION);
+    }
+    if (env.FEES_SUBSCRIPTION) {
+      this.fees.subscription = parseFeeConfigure(env.FEES_SUBSCRIPTION);
+    }
+    if (env.FEES_PUBLICATION) {
+      this.fees.publication = parseFeeConfigure(env.FEES_PUBLICATION);
+    }
+
+    if (this.fees.admission.length) {
+      this.defaultPlan = this.fees.admission[0];
+    } else if (this.fees.subscription.length) {
+      this.defaultPlan = this.fees.subscription[0];
+    }
+
+    this.botKey = env.RELAY_BOT_KEY;
+
+    if (this.botKey && !/^[a-f0-9]{64}$/.test(this.botKey)) {
+      throw new Error("Invalid bot key");
+    } else {
+      this.botPubkey = nostr.getPublicKey(this.botKey);
+      this.bot = new Bot(this.botKey, this);
     }
   }
 
@@ -368,13 +398,20 @@ Time: ${new Date().toISOString()}`);
     this.notify(ev);
 
     if (
-      ev.pubkey === this.nip11.pubkey && ev.kind === 4 && this.botKey &&
+      ev.kind === 4 && this.botKey &&
       ev.tags.find((i) => i[0] === "p")?.[1] === this.botPubkey
     ) {
-      // handle admin to bot commands
       handleBotMessage(ev, this);
       return;
     }
+
+    if (
+      ev.kind === 9735 && this.payment && ev.pubkey === this.payment.pubkey &&
+      ev.tags.find((i) => i[0] === "p")?.[1] === this.botKey
+    ) {
+      handlePayment(this, ev);
+    }
+
     this.broadcast(ev);
   }
 
@@ -404,80 +441,7 @@ Time: ${new Date().toISOString()}`);
   }
 
   getHandler() {
-    return (req: Request) => {
-      if (req.method === "OPTIONS") {
-        return new Response(null, { headers: CORSHeaders });
-      }
-
-      if (req.headers.get("accept") === "application/nostr+json") {
-        const url = new URL(req.url);
-        const paymentUrl = new URL("/payments", url.origin);
-        const info: Record<string, unknown> = {
-          ...this.nip11,
-          limitation: this.limits,
-          payments_url: paymentUrl.href,
-          fees: {
-            admission: this.env.FEES_ADMISSION
-              ? parseFeeConfigure(this.env.FEES_ADMISSION)
-              : [],
-            subscription: this.env.FEES_SUBSCRIPTION
-              ? parseFeeConfigure(this.env.FEES_SUBSCRIPTION)
-              : [],
-            publication: this.env.FEES_PUBLICATION
-              ? parseFeeConfigure(this.env.FEES_PUBLICATION)
-              : [],
-          },
-        };
-
-        if (this.retentions.length) {
-          info.retention = this.retentions;
-        }
-
-        if (this.env.RELAY_COUNTRIES) {
-          const arr = this.env.RELAY_COUNTRIES.split(",").filter((i) => i);
-          if (arr.length) info.relay_countries = arr;
-        }
-
-        if (this.env.LANGUAGE_TAGS) {
-          const arr = this.env.LANGUAGE_TAGS.split(",").filter((i) => i);
-          if (arr.length) info.language_tags = arr;
-        }
-
-        if (this.env.TAGS) {
-          const arr = this.env.TAGS.split(",").filter((i) => i);
-          if (arr.length) info.tags = arr;
-        }
-
-        if (this.env.POSTING_POLICY) {
-          info.posting_policy = this.env.POSTING_POLICY;
-        }
-
-        return new Response(
-          JSON.stringify(info),
-          {
-            headers: {
-              "content-type": "application/nostr+json",
-              ...CORSHeaders,
-            },
-          },
-        );
-      }
-
-      if (!req.headers.has("upgrade")) {
-        return new Response(
-          "Please use nostr client for request.",
-          {
-            status: 400,
-            headers: { "content-type": "text/plain", ...CORSHeaders },
-          },
-        );
-      }
-
-      const { socket, response } = Deno.upgradeWebSocket(req);
-      this.addSocket(socket);
-
-      return response;
-    };
+    return getHandler(this);
   }
 
   notify(ev: nostr.Event) {
@@ -531,6 +495,9 @@ Time: ${new Date().toISOString()}`);
 
   async serve() {
     await this.repo.init();
+    await this.payment?.init();
+    await this.bot?.init();
+
     http.serve(this.getHandler(), { port: this.port });
   }
 }
