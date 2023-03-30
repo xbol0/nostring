@@ -13,6 +13,19 @@ export async function handleBotMessage(e: nostr.Event, app: Application) {
       return await app.report("hello");
     case "ping":
       return await app.bot?.send(e.pubkey, "pong");
+    case "event": {
+      if (e.pubkey !== app.nip11.pubkey) return;
+      if (message.length !== 71) {
+        return await app.report("Unvalid params");
+      }
+      const id = message.slice(-64);
+      const arr = await app.repo.query({ ids: [id] });
+      if (!arr.length) {
+        return await app.report("Not found");
+      }
+
+      return await app.report(JSON.stringify(arr[0]));
+    }
     default:
       return await app.report("Unknown command: " + match[0]);
   }
