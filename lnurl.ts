@@ -82,17 +82,16 @@ export class LnurlPayment {
     }
 
     if (!bolt11Obj.tagsObject.payment_hash) return false;
-
-    const descHash = bolt11Obj.tags.find((i) =>
-      i.tagName === "description_hash"
-    );
-    if (!descHash) return false;
+    if (!bolt11Obj.tagsObject.purpose_commit_hash) return false;
 
     const dhBuf = await crypto.subtle.digest(
       "SHA-256",
       encoder.encode(desc[1]),
     );
-    if (hex.encode(new Uint8Array(dhBuf)) !== descHash.data) {
+    if (
+      hex.encode(new Uint8Array(dhBuf)) !==
+        bolt11Obj.tagsObject.purpose_commit_hash
+    ) {
       return false;
     }
 
