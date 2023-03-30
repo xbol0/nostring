@@ -283,7 +283,7 @@ order by created_at desc offset $2 limit 1)",
       );
 
       const balance = res.rows.length ? res.rows[0].balance : 0n;
-      const admitted_at = res.rows[0].admitted_at;
+      const admitted_at = res.rows.length ? res.rows[0].admitted_at : null;
 
       await tx.queryArray(
 "insert into pubkeys (pubkey,balance,admitted_at) \
