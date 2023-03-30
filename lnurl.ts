@@ -82,7 +82,6 @@ export class LnurlPayment {
     }
 
     if (!bolt11Obj.tagsObject.payment_hash) return false;
-    if (!bolt11Obj.tagsObject.description) return false;
 
     const descHash = bolt11Obj.tags.find((i) =>
       i.tagName === "description_hash"

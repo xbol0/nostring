@@ -493,6 +493,7 @@ Time: ${new Date().toISOString()}`);
 
       await this.repo.save(ev);
       this.notify(ev);
+      this.broadcast(ev);
     } catch (e) {
       console.error("REPORT Error:", e);
     }

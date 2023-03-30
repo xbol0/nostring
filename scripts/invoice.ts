@@ -2,13 +2,13 @@ import { lnurl, nostr } from "../deps.ts";
 
 function help() {
   console.log(
-    `usage: deno task invoice <amount> <pubkey> 
+    `usage: deno task invoice <amount>
   if skip private key, will read from env NOSTR_KEY 
   if skip relay, only print the event without send`,
   );
 }
 
-if (Deno.args.length !== 2) {
+if (Deno.args.length !== 1) {
   help();
   Deno.exit(1);
 }
@@ -16,15 +16,15 @@ if (Deno.args.length !== 2) {
 const key = Deno.env.get("BOT_KEY") || "";
 const botPubkey = nostr.getPublicKey(key);
 console.log("bot pubkey", botPubkey);
-const pubkey = Deno.args[1] || "";
 const amount = parseInt(Deno.args[0] || "1") * 1000;
 const event = nostr.finishEvent({
   kind: 9734,
   created_at: ~~(Date.now() / 1000),
   content: "",
-  tags: [["p", botPubkey], ["invoice", pubkey], [
+  tags: [["p", botPubkey], ["amount", amount.toString()], [
     "relays",
-    "wss://nostring.deno.dev",
+    "wss://tring2.deno.dev",
+    "wss://relay.damus.io",
   ]],
 }, key);
 const ln = Deno.env.get("PAYMENT_LNURL") || "";

@@ -11,6 +11,8 @@ export async function handleBotMessage(e: nostr.Event, app: Application) {
     case "stat":
       if (e.pubkey !== app.nip11.pubkey) return;
       return await app.report("hello");
+    case "ping":
+      return await app.bot?.send(e.pubkey, "pong");
     default:
       return await app.report("Unknown command: " + match[0]);
   }
