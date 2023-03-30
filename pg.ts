@@ -1,4 +1,5 @@
 import { Application } from "./app.ts";
+import { FilterItemLimit } from "./constant.ts";
 import { nostr, pg } from "./deps.ts";
 import { Invoice, Repository } from "./types.ts";
 import { makeCollection } from "./util.ts";
@@ -84,7 +85,9 @@ export class PgRepo implements Repository {
       let i = 1, limit = this.app.limits.maxLimit;
 
       if (filter.ids && filter.ids.length) {
-        if (filter.ids.length > 100) throw new Error("Too many ids");
+        if (filter.ids.length > FilterItemLimit) {
+          throw new Error("Too many ids");
+        }
 
         const subs: string[] = [];
 
@@ -96,7 +99,7 @@ export class PgRepo implements Repository {
               `Prefix query less than ${this.app.limits.minPrefix}`,
             );
           }
-          if (item.length > 64) continue;
+          if (item && item.length > 64) continue;
 
           subs.push(`id like $${i++}`);
           args.push(`${item}%`);
@@ -108,7 +111,9 @@ export class PgRepo implements Repository {
       }
 
       if (filter.authors && filter.authors.length) {
-        if (filter.authors.length > 50) throw new Error("Too many authors");
+        if (filter.authors.length > FilterItemLimit) {
+          throw new Error("Too many authors");
+        }
 
         const subs: string[] = [];
 
@@ -133,7 +138,9 @@ export class PgRepo implements Repository {
       }
 
       if (filter.kinds && filter.kinds.length) {
-        if (filter.kinds.length > 20) throw new Error("Too many kinds");
+        if (filter.kinds.length > FilterItemLimit) {
+          throw new Error("Too many kinds");
+        }
 
         wheres.push(`kind=any($${i++})`);
         args.push(filter.kinds);
