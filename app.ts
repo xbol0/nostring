@@ -278,7 +278,7 @@ export class Application {
     }
 
     for (const i of filters) {
-      if (i.kinds?.includes(4)) {
+      if (this.limits.authRequired && i.kinds?.includes(4)) {
         if (!this.authed.has(socket)) {
           this.send(socket, [
             "NOTIFY",
