@@ -48,8 +48,8 @@ export class Application {
     );
 
     if (env.PAYMENT_LNURL) {
-      if (!env.RELAY_BOT_KEY) {
-        throw new Error("You should setup a RELAY_BOT_KEY for handle payment.");
+      if (!env.BOT_KEY) {
+        throw new Error("You should setup a BOT_KEY for handle payment.");
       }
 
       this.payment = new LnurlPayment(this);
@@ -126,7 +126,7 @@ export class Application {
       this.defaultPlan = this.fees.subscription[0];
     }
 
-    this.botKey = env.RELAY_BOT_KEY;
+    this.botKey = env.BOT_KEY;
 
     if (this.botKey && !/^[a-f0-9]{64}$/.test(this.botKey)) {
       throw new Error("Invalid bot key");
