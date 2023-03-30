@@ -15,6 +15,7 @@ export class Application {
   repo: Repository;
   payment: LnurlPayment | null = null;
   bot: Bot | null = null;
+  channel: BroadcastChannel | null = null;
 
   port: number;
   nip11: Nip11;
@@ -133,6 +134,13 @@ export class Application {
     } else {
       this.botPubkey = nostr.getPublicKey(this.botKey);
       this.bot = new Bot(this.botKey, this);
+    }
+
+    if (typeof BroadcastChannel !== "undefined") {
+      this.channel = new BroadcastChannel("nostr");
+      this.channel.addEventListener("message", (e) => {
+        this.notify(e.data);
+      });
     }
   }
 
@@ -413,6 +421,8 @@ Time: ${new Date().toISOString()}`);
     }
 
     this.broadcast(ev);
+
+    if (this.channel) this.channel.postMessage(ev);
   }
 
   onCLOSE(id: string, socket: WebSocket) {
