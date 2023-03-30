@@ -274,7 +274,7 @@ order by created_at desc offset $2 limit 1)",
     const amount = parseInt(boltObj.millisatoshis);
 
     await this.use(async (db) => {
-      const tx = db.createTransaction("invoice:" + e.id);
+      const tx = db.createTransaction("payment:" + e.id);
       await tx.begin();
 
       const res = await tx.queryObject<User>(
@@ -288,7 +288,7 @@ order by created_at desc offset $2 limit 1)",
       await tx.queryArray(
 "insert into pubkeys (pubkey,balance,admitted_at) \
 values ($1,$2,$3) on conflict (pubkey) do update set \
-balance=balance+$2,is_admitted=$3",
+balance=balance+$2,admitted_at=$3",
         [
           pubkey,
           amount,
