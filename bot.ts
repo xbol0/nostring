@@ -49,7 +49,7 @@ export class Bot {
     }
 
     const e = nostr.finishEvent({
-      created_at: ~~(Date.now()),
+      created_at: ~~(Date.now() / 1000),
       kind: 0,
       tags: [],
       content: JSON.stringify({

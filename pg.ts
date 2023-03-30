@@ -68,7 +68,7 @@ export class PgRepo implements Repository {
           e.content,
           JSON.stringify(e.tags),
           e.sig,
-          e.created_at,
+          new Date(e.created_at * 1000),
           expiredAt,
           delegator,
           dTag,
@@ -148,12 +148,12 @@ export class PgRepo implements Repository {
 
       if (filter.since) {
         wheres.push(`created_at>=$${i++}`);
-        args.push(filter.since);
+        args.push(new Date(filter.since * 1000));
       }
 
       if (filter.until) {
         wheres.push(`created_at<$${i++}`);
-        args.push(filter.until);
+        args.push(new Date(filter.until * 1000));
       }
 
       if (filter.limit) {
@@ -310,7 +310,7 @@ create table if not exists "events" (
   id text not null,
   kind int not null,
   pubkey text not null,
-  created_at int not null,
+  created_at timestamp not null,
   tags jsonb not null,
   content text not null,
   sig text not null,
