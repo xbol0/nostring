@@ -66,36 +66,3 @@ export function parseFeeConfigure(str: string): FeeType[] {
 
   return list;
 }
-
-// Generate by ChatGPT 🥰
-export function formatSeconds(seconds: number): string {
-  const year = Math.floor(seconds / 31536000);
-  const month = Math.floor((seconds % 31536000) / 2592000);
-  const day = Math.floor(((seconds % 31536000) % 2592000) / 86400);
-  const hour = Math.floor((((seconds % 31536000) % 2592000) % 86400) / 3600);
-  const minute = Math.floor(
-    ((((seconds % 31536000) % 2592000) % 86400) % 3600) / 60,
-  );
-  const second = ((((seconds % 31536000) % 2592000) % 86400) % 3600) % 60;
-
-  let result = "";
-  if (year > 0) {
-    result = `${year} year${year > 1 ? "s" : ""}`;
-  }
-  if (month > 0) {
-    result += ` ${month} month${month > 1 ? "s" : ""}`;
-  }
-  if (day > 0) {
-    result += ` ${day} day${day > 1 ? "s" : ""}`;
-  }
-  if (hour > 0) {
-    result += ` ${hour} hour${hour > 1 ? "s" : ""}`;
-  }
-  if (minute > 0) {
-    result += ` ${minute} minute${minute > 1 ? "s" : ""}`;
-  }
-  if (second > 0) {
-    result += ` ${second} second${second > 1 ? "s" : ""}`;
-  }
-  return result.trim();
-}

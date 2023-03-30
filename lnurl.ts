@@ -1,5 +1,5 @@
 import { Application } from "./app.ts";
-import { bolt, hex, lnurl, nostr } from "./deps.ts";
+import { bolt, encoder, hex, lnurl, nostr } from "./deps.ts";
 
 export async function handlePayment(app: Application, event: nostr.Event) {
   try {
@@ -7,10 +7,7 @@ export async function handlePayment(app: Application, event: nostr.Event) {
       throw new Error("Unverified payment invoice.");
     }
 
-    const bolt11 = event.tags.find((i) => i[0] === "bolt11")!;
-    const ph = app.payment!.getHash(bolt11[1]);
-
-    await app.repo.resolveInvoice(ph);
+    await app.repo.processPayment(event);
 
     await app.bot!.send(event.pubkey, "Payment received, thanks for your Zap.");
   } catch (e) {
@@ -41,6 +38,7 @@ export class LnurlPayment {
     }
 
     if (
+      "allowsNostr" in p && p.allowsNostr === true &&
       "nostrPubkey" in p && typeof p.nostrPubkey === "string" &&
       /^[0-9a-f]{64}$/.test(p.nostrPubkey)
     ) {
@@ -60,27 +58,12 @@ export class LnurlPayment {
     return payment_hash;
   }
 
-  async create(amount: number) {
-    if (!this.payParams) await this.init();
-    const url = `${this.payParams?.callback}?amount=${amount}&comment=${
-      encodeURIComponent("Pay for " + this.app.nip11.name)
-    }`;
-    const res = await fetch(url);
-    const json = await res.json();
-    const bolt11 = json.pr as string;
-    const obj = bolt.decode(bolt11);
-    const payment_hash = obj.tagsObject.payment_hash;
-    const expiry = new Date(
-      obj.timeExpireDate ? obj.timeExpireDate * 1000 : Date.now() + 86400,
-    );
-
-    if (!payment_hash) throw new Error("Invalid payment request");
-    return { bolt11, payment_hash, expiry };
-  }
-
   async verify(e: nostr.Event) {
     if (e.kind !== 9735) return false;
     if (e.pubkey !== this.pubkey) return false;
+
+    const desc = e.tags.find((i) => i[0] === "description");
+    if (!desc) return false;
 
     const bolt11Tag = e.tags.find((i) => i[0] === "bolt11");
     if (!bolt11Tag) return false;
@@ -90,9 +73,29 @@ export class LnurlPayment {
     );
     if (!preimageTag) return false;
 
-    const bolt11Obj = bolt.decode(bolt11Tag[1]);
-    const ph = bolt11Obj.tags.find((i) => i.tagName === "payment_hash");
-    if (!ph) return false;
+    let bolt11Obj: ReturnType<typeof bolt.decode>;
+
+    try {
+      bolt11Obj = bolt.decode(bolt11Tag[1]);
+    } catch {
+      return false;
+    }
+
+    if (!bolt11Obj.tagsObject.payment_hash) return false;
+    if (!bolt11Obj.tagsObject.description) return false;
+
+    const descHash = bolt11Obj.tags.find((i) =>
+      i.tagName === "description_hash"
+    );
+    if (!descHash) return false;
+
+    const dhBuf = await crypto.subtle.digest(
+      "SHA-256",
+      encoder.encode(desc[1]),
+    );
+    if (hex.encode(new Uint8Array(dhBuf)) !== descHash.data) {
+      return false;
+    }
 
     if (
       bolt11Obj.timeExpireDate &&
@@ -104,7 +107,7 @@ export class LnurlPayment {
       hex.decode(preimageTag[1]),
     );
 
-    if (ph.data != hex.encode(new Uint8Array(hash))) {
+    if (bolt11Obj.tagsObject.payment_hash != hex.encode(new Uint8Array(hash))) {
       return false;
     }
 

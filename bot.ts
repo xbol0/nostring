@@ -1,7 +1,6 @@
 import { Application } from "./app.ts";
 import { DefaultBotAvatar } from "./constant.ts";
 import { nostr } from "./deps.ts";
-import { formatSeconds } from "./util.ts";
 
 export async function handleBotMessage(e: nostr.Event, app: Application) {
   const message = await app.bot!.decrypt(e);
@@ -9,51 +8,11 @@ export async function handleBotMessage(e: nostr.Event, app: Application) {
   if (!match) return;
 
   switch (match[0].slice(1)) {
-    case "join":
-      return await sendInvoice(e, app);
     case "stat":
+      if (e.pubkey !== app.nip11.pubkey) return;
       return await app.report("hello");
     default:
       return await app.report("Unknown command: " + match[0]);
-  }
-}
-
-async function sendInvoice(e: nostr.Event, app: Application) {
-  if (!app.payment || !app.bot || !app.defaultPlan) return;
-  try {
-    const invoice = await app.payment.create(1000);
-    await app.repo.createInvoice({
-      id: invoice.payment_hash,
-      amount: app.defaultPlan.amount,
-      bolt11: invoice.bolt11,
-      paid_at: null,
-      description: e.pubkey + "'s fee of " +
-        (app.defaultPlan.period ? "subscription" : "admission"),
-      expired_at: invoice.expiry,
-      pubkey: e.pubkey,
-    });
-
-    let msg = "";
-    if (app.defaultPlan.period) {
-      msg +=
-        `Please find below a payment request for your subscription, it will be expired at ${
-          formatSeconds(~~(invoice.expiry.getTime() / 1000))
-        }. You are required to pay ${app.defaultPlan.amount} sats every ${
-          formatSeconds(app.defaultPlan.period)
-        }`;
-    } else {
-      msg +=
-        `Please find below a payment request for your admission, it will be expired at ${
-          formatSeconds(~~(invoice.expiry.getTime() / 1000))
-        }. You are required to make the payment only once.`;
-    }
-
-    msg += "\n" + invoice.bolt11;
-
-    return await app.bot.send(e.pubkey, msg);
-  } catch (e) {
-    console.error(e);
-    return;
   }
 }
 

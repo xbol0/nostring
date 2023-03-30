@@ -4,9 +4,7 @@ export interface Repository {
   init(): Promise<void>;
   save(e: nostr.Event): Promise<void>;
   query(filters: nostr.Filter): Promise<nostr.Event[]>;
-  createInvoice(invoice: Invoice): Promise<void>;
-  getInvoice(id: string): Promise<Invoice>;
-  resolveInvoice(id: string): Promise<void>;
+  processPayment(e: nostr.Event): Promise<void>;
 }
 
 export type Nip11 = {
@@ -39,22 +37,8 @@ export type EventRetention = {
   time?: number;
 };
 
-export type Invoice = {
-  id: string;
+export type User = {
   pubkey: string;
-  bolt11: string;
-  amount: number;
-  description: string;
-  paid_at: Date | null;
-  expired_at: Date;
+  balance: bigint;
+  admitted_at: Date | null;
 };
-
-export interface PaymentProvider {
-  createInvoice(
-    amount: number,
-    pubkey: string,
-    memo?: string,
-  ): Promise<Invoice>;
-  getInvoice(id: string): Promise<Invoice>;
-  resolveCallback(req: Request): Promise<void>;
-}

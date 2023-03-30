@@ -1,7 +1,7 @@
 import { Application } from "./app.ts";
 import { FilterItemLimit } from "./constant.ts";
-import { nostr, pg } from "./deps.ts";
-import { Invoice, Repository } from "./types.ts";
+import { bolt, nostr, pg } from "./deps.ts";
+import { Repository, User } from "./types.ts";
 import { makeCollection } from "./util.ts";
 
 export class PgRepo implements Repository {
@@ -260,69 +260,49 @@ order by created_at desc offset $2 limit 1)",
     });
   }
 
-  async createInvoice(invoice: Invoice) {
-    if (!invoice.id) invoice.id = crypto.randomUUID();
-    await this.use((db) =>
-      db.queryArray(
-"insert into invoices (id,pubkey,bolt11,amount, \
-description,paid_at,expired_at) values (\
-$id,$pubkey,$bolt11,$amount,\
-$description,$paid_at,$expired_at) on conflict do nothing",
-        invoice,
-      )
-    );
-  }
+  async processPayment(e: nostr.Event) {
+    if (e.kind !== 9735) return;
+    const desc = e.tags.find((i) => i[0] === "description");
+    if (!desc) throw new Error("Not found request event");
+    if (typeof desc[1] !== "string") throw new Error("Not found request event");
+    const request = JSON.parse(desc[1]) as nostr.Event;
+    if (!nostr.verifySignature(request)) throw new Error("Invalid event");
+    if (request.kind !== 9734) throw new Error("Not a zap request");
 
-  async getInvoice(id: string) {
-    return await this.use(async (db) => {
-      const res = await db.queryObject<Invoice>(
-"select id,pubkey,bolt11,amount,\
-description,paid_at,expired_at from invoices where id=$1",
-        [id],
-      );
+    const bolt11 = e.tags.find((i) => i[0] === "bolt11");
+    if (!bolt11) throw new Error("Not found bolt11 tag");
+    if (typeof bolt11[1] !== "string") throw new Error("Invalid bolt11");
+    const boltObj = bolt.decode(bolt11[1]);
+    if (!boltObj.millisatoshis) throw new Error("Invalid bolt11 amount");
 
-      if (!res.rows.length) throw new Error("Not found invoice: " + id);
-      return res.rows[0];
-    });
-  }
+    const pubkey = request.pubkey;
+    const amount = parseInt(boltObj.millisatoshis);
 
-  async resolveInvoice(id: string) {
     await this.use(async (db) => {
-      const tx = db.createTransaction("invoice:" + id);
+      const tx = db.createTransaction("invoice:" + e.id);
       await tx.begin();
 
-      const res = await tx.queryObject<Invoice>(
-        "select pubkey,amount,paid_at,expired_at from invoices where id=$1 for update",
-        [id],
+      const res = await tx.queryObject<User>(
+        "select pubkey,balance,admitted_at from pubkeys where pubkey=$1 for update",
+        [pubkey],
       );
 
-      if (!res.rows.length) {
-        await tx.rollback();
-        throw new Error("Invoice not found");
-      }
-
-      const invoice = res.rows[0];
-
-      if (invoice.paid_at !== null) {
-        await tx.rollback();
-        throw new Error("Invoice has been paid");
-      }
-
-      if (invoice.expired_at.getTime() < Date.now()) {
-        await tx.rollback();
-        throw new Error("Invoice has been expired");
-      }
+      const balance = res.rows.length ? res.rows[0].balance : 0n;
+      const admitted_at = res.rows[0].admitted_at;
 
       await tx.queryArray(
-        "update invoices set paid_at=now() where id=$1",
-        [id],
-      );
-
-      await tx.queryArray(
-"insert into pubkeys (pubkey,balance,is_admitted,tos_accepted_at) \
-values ($1,$2,$3,now()) on conflict (pubkey) do update set \
+"insert into pubkeys (pubkey,balance,admitted_at) \
+values ($1,$2,$3) on conflict (pubkey) do update set \
 balance=balance+$2,is_admitted=$3",
-        [invoice.pubkey, invoice.amount, true],
+        [
+          pubkey,
+          amount,
+          admitted_at
+            ? admitted_at
+            : (balance + BigInt(amount) >= this.app.defaultPlan!.amount
+              ? new Date()
+              : null),
+        ],
       );
 
       await tx.commit();
@@ -353,19 +333,6 @@ create index if not exists tags_idx on events using gin (tags);
 create table if not exists "pubkeys" (
   pubkey text primary key,
   balance bigint not null default 0,
-  is_admitted boolean not null default false,
-  tos_accepted_at timestamp default null
+  admitted_at timestamp default null
 );
-
-create table if not exists "invoices" (
-  id text primary key,
-  pubkey text not null,
-  bolt11 text not null,
-  amount bigint not null default 0,
-  description text not null,
-  paid_at timestamp default null,
-  expired_at timestamp not null
-);
-
-create index if not exists pubkey_idx on invoices (pubkey);
 `;

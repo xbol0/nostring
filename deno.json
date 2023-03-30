@@ -1,6 +1,7 @@
 {
   "tasks":{
     "start": "deno run --allow-net --allow-env scripts/start.ts",
-    "sign": "deno run --allow-net --allow-env scripts/signAndSendEvent.ts"
+    "sign": "deno run --allow-net --allow-env scripts/send.ts",
+    "invoice": "deno run --allow-net --allow-env scripts/invoice.ts"
   }
 }
