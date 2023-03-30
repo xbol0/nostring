@@ -210,11 +210,6 @@ export class PgRepo implements Repository {
         "delete from events where expired_at<current_timestamp",
       );
 
-      // Delete expired invoices
-      await db.queryArray(
-        "delete from invoices where expired_at<current_timestamp",
-      );
-
       if (!pubkey) return;
       if (pubkey && this.app.pubkeys.includes(pubkey)) return;
       if (pubkey === this.app.nip11.pubkey) return;
