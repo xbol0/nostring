@@ -5,6 +5,7 @@ export interface Repository {
   save(e: nostr.Event): Promise<void>;
   query(filters: nostr.Filter): Promise<nostr.Event[]>;
   processPayment(e: nostr.Event): Promise<void>;
+  status(): Promise<Record<string, number>>;
 }
 
 export type Nip11 = {

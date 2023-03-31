@@ -303,6 +303,25 @@ balance=p.balance+$2,admitted_at=$3",
       await tx.commit();
     });
   }
+
+  async status() {
+    return await this.use(async (db) => {
+      const res = await db.queryArray(
+"select 'total',count(*) from events union \
+select 'notes',count(*) from events where kind=1 union \
+select 'profiles',count(*) from events where kind=0 union \
+select 'DMs',count(*) from events where kind=4 union \
+select 'reactions',count(*) from events where kind=7 union \
+select 'repost',count(*) from events where kind=6 union \
+select 'zap',count(*) from events where kind=9735 union \
+select 'channels',count(*) from events where kind=40 union \
+select 'reports',count(*) from events where kind=1984 union \
+select 'long-form',count(*) from events where kind=30023",
+      );
+
+      return Object.fromEntries(res.rows.map((i) => [i[0], Number(i[1])]));
+    });
+  }
 }
 
 const InitSQL = `

@@ -10,7 +10,10 @@ export async function handleBotMessage(e: nostr.Event, app: Application) {
   switch (match[0].slice(1)) {
     case "stat":
       if (e.pubkey !== app.nip11.pubkey) return;
-      return await app.report("hello");
+      return await app.report(
+        Object.entries(await app.repo.status()).map((i) => `${i[0]}: ${i[1]}`)
+          .join("\n"),
+      );
     case "ping":
       return await app.bot?.send(e.pubkey, "pong");
     case "event": {
