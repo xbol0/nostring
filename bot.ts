@@ -14,8 +14,6 @@ export async function handleBotMessage(e: nostr.Event, app: Application) {
         Object.entries(await app.repo.status()).map((i) => `${i[0]}: ${i[1]}`)
           .join("\n"),
       );
-    case "ping":
-      return await app.bot?.send(e.pubkey, "pong");
     case "event": {
       if (e.pubkey !== app.nip11.pubkey) return;
       if (message.length !== 71) {
@@ -28,6 +26,19 @@ export async function handleBotMessage(e: nostr.Event, app: Application) {
       }
 
       return await app.report(JSON.stringify(arr[0]));
+    }
+    case "help":
+      return await app.bot!.help(e.pubkey);
+    case "balance": {
+      try {
+        const data = await app.repo.pubkeyInfo(e.pubkey);
+        return await app.bot!.send(
+          e.pubkey,
+          `Your balance is: ${Number(data.balance / 1000n)} Sats`,
+        );
+      } catch {
+        return await app.bot!.send(e.pubkey, "Your balance is: 0 Sat");
+      }
     }
     default:
       return await app.report("Unknown command: " + match[0]);
@@ -95,5 +106,22 @@ export class Bot {
 
   async decrypt(e: nostr.Event) {
     return await nostr.nip04.decrypt(this.key, e.pubkey, e.content);
+  }
+
+  help(pubkey: string) {
+    return this.send(
+      pubkey,
+      pubkey === this.app.nip11.pubkey
+        ? `Commands:
+
+/stat Show relay status.
+/event [id] Show event JSON.
+/help Show help message.
+/balance Show your balance.`
+        : `Commands:
+
+/help Show help message.
+/balance Show your balance.`,
+    );
   }
 }

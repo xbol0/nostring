@@ -316,10 +316,23 @@ select 'repost',count(*) from events where kind=6 union \
 select 'zap',count(*) from events where kind=9735 union \
 select 'channels',count(*) from events where kind=40 union \
 select 'reports',count(*) from events where kind=1984 union \
-select 'long-form',count(*) from events where kind=30023",
+select 'long-form',count(*) from events where kind=30023 union \
+select 'rewards',round(sum(balance))::bigint from pubkeys",
       );
 
       return Object.fromEntries(res.rows.map((i) => [i[0], Number(i[1])]));
+    });
+  }
+
+  async pubkeyInfo(pubkey: string) {
+    return await this.use(async (db) => {
+      const res = await db.queryObject<User>(
+        "select pubkey,balance,admitted_at from pubkey where pubkey=$1",
+        [pubkey],
+      );
+
+      if (res.rows.length) throw new Error("not found");
+      return res.rows[0];
     });
   }
 }
