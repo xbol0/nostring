@@ -15,8 +15,10 @@ if (Deno.args.length !== 1) {
 }
 
 const app = new Application();
+await app.repo.init();
 const payment = new LnurlPayment(app);
 await payment.init();
 
 const e = JSON.parse(Deno.args[0]);
 console.log(await payment.verify(e));
+await app.repo.processPayment(e);

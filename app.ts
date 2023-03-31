@@ -304,9 +304,9 @@ export class Application {
         console.error(e);
         this.send(socket, ["NOTIFY", `${id}: ${e.message}`]);
 
-        await this.report(`REQ Error: ${e.message}
-Filter: ${JSON.stringify(f, null, 2)}
-Time: ${new Date().toISOString()}`);
+        //         await this.report(`REQ Error: ${e.message}
+        // Filter: ${JSON.stringify(f, null, 2)}
+        // Time: ${new Date().toISOString()}`);
       }
     }
 

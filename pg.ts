@@ -271,7 +271,7 @@ order by created_at desc offset $2 limit 1)",
     if (!boltObj.millisatoshis) throw new Error("Invalid bolt11 amount");
 
     const pubkey = request.pubkey;
-    const amount = parseInt(boltObj.millisatoshis);
+    const amount = BigInt(boltObj.millisatoshis);
 
     await this.use(async (db) => {
       const tx = db.createTransaction("payment:" + e.id);
@@ -286,15 +286,15 @@ order by created_at desc offset $2 limit 1)",
       const admitted_at = res.rows.length ? res.rows[0].admitted_at : null;
 
       await tx.queryArray(
-"insert into pubkeys (pubkey,balance,admitted_at) \
+"insert into pubkeys as p (pubkey,balance,admitted_at) \
 values ($1,$2,$3) on conflict (pubkey) do update set \
-balance=balance+$2,admitted_at=$3",
+balance=p.balance+$2,admitted_at=$3",
         [
           pubkey,
           amount,
           admitted_at
             ? admitted_at
-            : (balance + BigInt(amount) >= this.app.defaultPlan!.amount
+            : (balance + amount >= this.app.defaultPlan!.amount
               ? new Date()
               : null),
         ],
