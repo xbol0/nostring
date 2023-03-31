@@ -61,34 +61,35 @@ export class Bot {
   async init() {
     const pubkey = nostr.getPublicKey(this.key);
     const list = await this.app.repo.query({
-      kinds: [0],
+      kinds: [0, 2, 10002],
       authors: [pubkey],
-      limit: 1,
+      limit: 3,
     });
 
-    if (list.length) {
-      const data = JSON.parse(list[0].content) as Record<string, string>;
+    const meta = list.find((i) => i.kind === 0);
+
+    if (!meta) {
+      await this._updateMeta();
+    } else {
+      const data = JSON.parse(meta.content) as Record<string, string>;
       if (
-        data.name === this.meta.name && data.picture === this.meta.picture &&
-        data.username === this.meta.username &&
-        data.lud06 === this.app.payment?.lnurl
+        data.name !== this.meta.name || data.picture !== this.meta.picture ||
+        data.username !== this.meta.username ||
+        data.lud06 !== this.app.payment?.lnurl
       ) {
-        return;
+        await this._updateMeta();
       }
     }
 
-    const e = nostr.finishEvent({
-      created_at: ~~(Date.now() / 1000),
-      kind: 0,
-      tags: [],
-      content: JSON.stringify({
-        ...this.meta,
-        lud06: this.app.payment?.lnurl || "",
-      }),
-    }, this.key);
-    await this.app.repo.save(e);
-    this.app.notify(e);
-    this.app.broadcast(e);
+    const relays = list.find((i) => i.kind === 2);
+    if (!relays) {
+      await this._updateRelays();
+    } else {
+      const data = JSON.parse(relays.content);
+      if (!(this.app.env.BOT_RELAY in data)) {
+        await this._updateRelays();
+      }
+    }
 
     console.log("Update bot information success");
   }
@@ -106,6 +107,46 @@ export class Bot {
 
   async decrypt(e: nostr.Event) {
     return await nostr.nip04.decrypt(this.key, e.pubkey, e.content);
+  }
+
+  async _updateMeta() {
+    const e = nostr.finishEvent({
+      created_at: ~~(Date.now() / 1000),
+      kind: 0,
+      tags: [],
+      content: JSON.stringify({
+        ...this.meta,
+        lud06: this.app.payment?.lnurl || "",
+      }),
+    }, this.key);
+    await this.app.repo.save(e);
+    this.app.notify(e);
+    this.app.broadcast(e);
+  }
+
+  async _updateRelays() {
+    const now = ~~(Date.now() / 1000);
+    const e = nostr.finishEvent({
+      created_at: now,
+      kind: 2,
+      tags: [],
+      content: JSON.stringify({
+        [this.app.env.BOT_RELAY]: { read: true, write: true },
+      }),
+    }, this.key);
+    await this.app.repo.save(e);
+    this.app.notify(e);
+    this.app.broadcast(e);
+
+    const e2 = nostr.finishEvent({
+      created_at: now,
+      kind: 10002,
+      tags: [["r", this.app.env.BOT_RELAY]],
+      content: "",
+    }, this.key);
+    await this.app.repo.save(e2);
+    this.app.notify(e2);
+    this.app.broadcast(e2);
   }
 
   help(pubkey: string) {

@@ -302,6 +302,7 @@ export class Application {
           .forEach((i) => this.send(socket, ["EVENT", id, i]));
       } catch (e) {
         console.error(e);
+        console.error(JSON.stringify(f));
         this.send(socket, ["NOTIFY", `${id}: ${e.message}`]);
 
         //         await this.report(`REQ Error: ${e.message}
