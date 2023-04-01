@@ -146,6 +146,10 @@ export class Application {
           console.log(e.data);
         }
       });
+
+      this.channel.addEventListener("messageerror", (e) => {
+        console.error(e.data);
+      });
     }
   }
 
