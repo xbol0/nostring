@@ -1,5 +1,9 @@
 import { Bot, handleBotMessage } from "./bot.ts";
-import { DefaultNIPs, DefaultTimeRange } from "./constant.ts";
+import {
+  DefaultEventRetension,
+  DefaultNIPs,
+  DefaultTimeRange,
+} from "./constant.ts";
 import { decoder, hex, http, nostr } from "./deps.ts";
 import { getHandler } from "./handler.ts";
 import { handlePayment, LnurlPayment } from "./lnurl.ts";
@@ -25,7 +29,7 @@ export class Application {
   botPubkey: string;
   relays: string[] = [];
   pool: nostr.SimplePool;
-  retentions: EventRetention[] = [];
+  retentions: EventRetention[] = DefaultEventRetension;
   env: Record<string, string> = {};
 
   // Whitelist pubkeys
