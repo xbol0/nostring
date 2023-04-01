@@ -139,7 +139,12 @@ export class Application {
     if (typeof BroadcastChannel !== "undefined") {
       this.channel = new BroadcastChannel("nostr");
       this.channel.addEventListener("message", (e) => {
-        this.notify(e.data);
+        try {
+          this.notify(JSON.parse(e.data));
+        } catch {
+          // Skip
+          console.log(e.data);
+        }
       });
     }
   }
@@ -418,7 +423,7 @@ export class Application {
 
     this.broadcast(ev);
 
-    if (this.channel) this.channel.postMessage(ev);
+    if (this.channel) this.channel.postMessage(JSON.stringify(ev));
   }
 
   onCLOSE(id: string, socket: WebSocket) {
