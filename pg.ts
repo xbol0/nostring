@@ -1,5 +1,5 @@
 import { Application } from "./app.ts";
-import { FilterItemLimit } from "./constant.ts";
+import { DefaultPoolSize, FilterItemLimit } from "./constant.ts";
 import { bolt, nostr, pg } from "./deps.ts";
 import { Repository, User } from "./types.ts";
 import { makeCollection } from "./util.ts";
@@ -9,7 +9,11 @@ export class PgRepo implements Repository {
   app: Application;
 
   constructor(url: string, app: Application) {
-    this.db = new pg.Pool(url, 10, true);
+    const poolSize = app.env.DB_POOL_SIZE
+      ? parseInt(app.env.DB_POOL_SIZE)
+      : DefaultPoolSize;
+
+    this.db = new pg.Pool(url, poolSize);
     this.app = app;
   }
 
