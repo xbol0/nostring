@@ -321,7 +321,7 @@ select 'zap',count(*) from events where kind=9735 union \
 select 'channels',count(*) from events where kind=40 union \
 select 'reports',count(*) from events where kind=1984 union \
 select 'long-form',count(*) from events where kind=30023 union \
-select 'rewards',round(sum(balance))::bigint from pubkeys",
+select 'rewards',round(sum(balance))::bigint from pubkeys order by 1",
       );
 
       return Object.fromEntries(res.rows.map((i) => [i[0], Number(i[1])]));
