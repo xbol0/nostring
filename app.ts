@@ -16,6 +16,8 @@ export class Application {
   challenges = new Map<WebSocket, string>();
   authed = new Map<WebSocket, string>();
 
+  features: Record<string, string | number | boolean> = {};
+
   repo: Repository;
   payment: LnurlPayment | null = null;
   bot: Bot | null = null;
@@ -26,7 +28,7 @@ export class Application {
   limits: Limits;
   createdAtRange: number[];
   botKey: string;
-  botPubkey: string;
+  botPubkey = "";
   relays: string[] = [];
   pool: nostr.SimplePool;
   retentions: EventRetention[] = DefaultEventRetension;
@@ -46,6 +48,8 @@ export class Application {
   constructor() {
     const env = Deno.env.toObject();
     this.env = env;
+
+    this.features = parseFeatures(this.env);
 
     this.repo = new PgRepo(
       env.DB_URL || "postgres://localhost:5432/nostring",
@@ -133,14 +137,14 @@ export class Application {
 
     this.botKey = env.BOT_KEY;
 
-    if (this.botKey && !/^[a-f0-9]{64}$/.test(this.botKey)) {
-      throw new Error("Invalid bot key");
-    } else {
+    if (this.botKey && /^[a-f0-9]{64}$/.test(this.botKey)) {
       this.botPubkey = nostr.getPublicKey(this.botKey);
       this.bot = new Bot(this.botKey, this);
     }
 
-    if (typeof BroadcastChannel !== "undefined") {
+    if (
+      this.features.broadcastchannel && typeof BroadcastChannel !== "undefined"
+    ) {
       this.channel = new BroadcastChannel("nostr");
       this.channel.addEventListener("message", (e) => {
         try {
@@ -519,4 +523,19 @@ export class Application {
 
     http.serve(this.getHandler(), { port: this.port });
   }
+}
+
+function parseFeatures(
+  env: Record<string, string>,
+): Record<string, string | number | boolean> {
+  const obj: Record<string, string | number | boolean> = {};
+
+  if (
+    typeof env.ENABLE_BROADCASTCHANNEL !== "undefined" &&
+    env.ENABLE_BROADCASTCHANNEL !== "false"
+  ) {
+    obj["broadcastchannel"] = true;
+  }
+
+  return obj;
 }
