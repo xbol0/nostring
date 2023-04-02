@@ -1,5 +1,5 @@
 import { Application } from "./app.ts";
-import { DefaultBotAvatar } from "./constant.ts";
+import { BotAboutTemplate, DefaultBotAvatar } from "./constant.ts";
 import { nostr } from "./deps.ts";
 
 export async function handleBotMessage(e: nostr.Event, app: Application) {
@@ -40,6 +40,19 @@ export async function handleBotMessage(e: nostr.Event, app: Application) {
         return await app.bot!.send(e.pubkey, "Your balance is: 0 Sat");
       }
     }
+    case "note": {
+      const content = message.slice(6);
+      const e = nostr.finishEvent({
+        content,
+        created_at: ~~(Date.now() / 1000),
+        kind: 1,
+        tags: [],
+      }, app.bot!.key);
+
+      await app.repo.save(e);
+      app.notify(e);
+      return app.broadcast(e);
+    }
     default:
       return await app.report("Unknown command: " + match[0]);
   }
@@ -66,10 +79,13 @@ export class Bot {
       limit: 3,
     });
 
+    let hasModified = false;
+
     const meta = list.find((i) => i.kind === 0);
 
     if (!meta) {
       await this._updateMeta();
+      hasModified = true;
     } else {
       const data = JSON.parse(meta.content) as Record<string, string>;
       if (
@@ -78,20 +94,26 @@ export class Bot {
         data.lud06 !== this.app.payment?.lnurl
       ) {
         await this._updateMeta();
+        hasModified = true;
       }
     }
 
     const relays = list.find((i) => i.kind === 2);
     if (!relays) {
       await this._updateRelays();
+      hasModified = true;
     } else {
       const data = JSON.parse(relays.content);
       if (!(this.app.env.BOT_RELAY in data)) {
         await this._updateRelays();
+        hasModified = true;
       }
     }
 
-    console.log("Update bot information success");
+    if (hasModified) {
+      console.log("Update bot information success");
+      await this.app.report("Bot metadata updated.");
+    }
   }
 
   async send(pubkey: string, msg: string, tags?: string[][]) {
@@ -116,6 +138,8 @@ export class Bot {
       tags: [],
       content: JSON.stringify({
         ...this.meta,
+        about: BotAboutTemplate.replaceAll("%NAME%", this.app.nip11.name)
+          .replaceAll("%URL%", this.app.env.BOT_RELAY),
         lud06: this.app.payment?.lnurl || "",
       }),
     }, this.key);

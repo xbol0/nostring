@@ -29,3 +29,5 @@ export const DefaultEventRetension: ERs = [
   // Other events up to 1000
   { count: 1000 },
 ];
+
+export const BotAboutTemplate = `This is a Bot of %NAME%, relay URL is %URL%.`;

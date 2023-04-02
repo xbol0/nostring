@@ -331,7 +331,9 @@ export class Application {
       return this.send(socket, ["NOTIFY", "Content length out of limit"]);
     }
 
-    if (ev.kind < 0 || ev.kind >= 40000) {
+    if (
+      this.features.allow_unknown_kind && (ev.kind < 0 || ev.kind >= 40000)
+    ) {
       return this.send(socket, ["OK", ev.id, false, "invalid: Unknown kind"]);
     }
 
@@ -535,6 +537,13 @@ function parseFeatures(
     env.ENABLE_BROADCASTCHANNEL !== "false"
   ) {
     obj["broadcastchannel"] = true;
+  }
+
+  if (
+    typeof env.ENABLE_ALLOW_UNKNOWN_KIND !== "undefined" &&
+    env.ENABLE_ALLOW_UNKNOWN_KIND !== "false"
+  ) {
+    obj["allow_unknown_kind"] = true;
   }
 
   return obj;
