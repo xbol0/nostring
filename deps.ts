@@ -1,3 +1,4 @@
+import "https://deno.land/std@0.182.0/dotenv/load.ts";
 import * as _hex from "https://deno.land/std@0.177.0/encoding/hex.ts";
 export * as nostr from "https://esm.sh/nostr-tools@1.7.5";
 export * as pg from "https://deno.land/x/postgres@v0.17.0/mod.ts";
