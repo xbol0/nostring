@@ -82,7 +82,7 @@ export class Application {
       software: "https://github.com/xbol0/nostring",
       supported_nips: (env.NIPS || DefaultNIPs).split(",")
         .map((i) => parseInt(i)),
-      version: "3.0.0-rc.1",
+      version: "3.0.0-rc.2",
     };
     this.limits = {
       maxMessageLength: parseInt(env.MAX_MESSAGE_LENGTH) || 393216,
