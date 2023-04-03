@@ -14,6 +14,11 @@ export const DefaultBotAvatar =
 
 export const FilterItemLimit = 100;
 
+// Events in spam filter
+export const SpamEventKinds = new Set([1, 4, 42, 30023]);
+
+export const SpamDetectPercent = "0.5";
+
 export const DefaultPoolSize = 3;
 
 type ERs = ReturnType<typeof parseEventRetention>;

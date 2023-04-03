@@ -3,11 +3,13 @@ import {
   DefaultEventRetension,
   DefaultNIPs,
   DefaultTimeRange,
+  SpamDetectPercent,
 } from "./constant.ts";
 import { decoder, hex, http, nostr } from "./deps.ts";
 import { getHandler } from "./handler.ts";
 import { handlePayment, LnurlPayment } from "./lnurl.ts";
 import { PgRepo } from "./pg.ts";
+import { SpamFilter } from "./spam.ts";
 import { EventRetention, Limits, Nip11, Repository } from "./types.ts";
 import { FeeType, parseEventRetention, parseFeeConfigure } from "./util.ts";
 
@@ -22,6 +24,7 @@ export class Application {
   payment: LnurlPayment | null = null;
   bot: Bot | null = null;
   channel: BroadcastChannel | null = null;
+  spam: SpamFilter | null = null;
 
   port: number;
   nip11: Nip11;
@@ -158,6 +161,10 @@ export class Application {
       this.channel.addEventListener("messageerror", (e) => {
         console.error(e.data);
       });
+    }
+
+    if (this.features.spamfilter) {
+      this.spam = new SpamFilter(this.features.spamfilter as number);
     }
   }
 
@@ -411,10 +418,14 @@ export class Application {
       }
     }
 
+    if (this.features.spamfilter && !this.spam!.filter(ev)) {
+      return this.send(socket, ["OK", ev.id, false, "invalid: Spam"]);
+    }
+
     try {
       await this.repo.save(ev);
     } catch (err) {
-      this.send(socket, ["OK", ev.id, false, `invalid: ${err.message}`]);
+      return this.send(socket, ["OK", ev.id, false, `invalid: ${err.message}`]);
     }
 
     this.send(socket, ["OK", ev.id, true, ""]);
@@ -522,6 +533,7 @@ export class Application {
     await this.repo.init();
     await this.payment?.init();
     await this.bot?.init();
+    await this.spam?.start();
 
     http.serve(this.getHandler(), { port: this.port });
   }
@@ -551,6 +563,12 @@ function parseFeatures(
     env.DISABLE_NIP11 !== "false"
   ) {
     obj["disable_nip11"] = true;
+  }
+
+  if (env.SPAM_DETECT_PERCENT !== "0") {
+    obj["spamfilter"] = parseFloat(
+      env.SPAM_DETECT_PERCENT || SpamDetectPercent,
+    );
   }
 
   return obj;
