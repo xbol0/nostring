@@ -181,6 +181,7 @@ export class Bot {
 
 /stat Show relay status.
 /event [id] Show event JSON.
+/note [content] Publish a note via Bot.
 /help Show help message.
 /balance Show your balance.`
         : `Commands:
