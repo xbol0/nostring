@@ -20,7 +20,7 @@ And then:
 
 ```bash
 deno run --allow-net --allow-read --allow-env \
-  https://deno.land/x/nostring@3.0.0-rc.2/scripts/start.ts
+  https://deno.land/x/nostring/scripts/start.ts
 ```
 
 Or you can clone this repo and start manually:
