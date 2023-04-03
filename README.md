@@ -1,125 +1,76 @@
 # Nostring
 
-A simple [Nostr](https://github.com/nostr-protocol/nostr) relay library written in Deno.
+[Nostr](https://github.com/nostr-protocol/nostr) relay written in Deno.
+
+You can easily host a relay by [Deno Deploy](https://deno.com/deploy) and [Bit.io](https://bit.io/).
+
+## Features
+
+- PostgreSQL database
+- Spam filter
+- Relay Bot
+- Zap for admission
 
 ## Usage
 
-Run directly for a simplest relay:
+Configure you environments or create a `.env` file.
+More details are below.
 
+And then:
+
+```bash
+deno run --allow-net --allow-read --allow-env \
+  https://deno.land/x/nostring@3.0.0-rc.2/scripts/start.ts
 ```
-export DB_URL=postgres://your-postgres-url
+
+Or you can clone this repo and start manually:
+
+```bash
+git clone https://github.com/xbol0/nostring
+cd nostring
 deno task start
 ```
 
-## Configure
+## Environment configuration
 
-[Example](env.example)
+| Name | Required | Description | Default |
+|:-:|:-:|:-|:-:|
+|DB_URL|yes|PostgreSQL connect URL||
+|PORT|no|HTTP server listen port|`9000`|
+|DB_POOL_SIZE|no|Database client connection pool size|`3`|
+|RELAY_NAME|no, recommanded|NIP-11 Relay name|`nostring`|
+|RELAY_DESC|no|NIP-11 Relay desciption||
+|ADMIN_PUBKEY|no, recommanded|NIP-11 Relay admin pubkey, hex encoding. Would be used for bot if enabled.||
+|RELAY_COUNTRIES|no|NIP-11 Relay countries||
+|ENABLE_BROADCASTCHANNEL|no|Enable [BraodcastChannel on Deno Deploy](https://deno.com/deploy/docs/runtime-broadcast-channel)||
+|ENABLE_ALLOW_UNKNOWN_KIND|no|Enable save unknown kind events||
+|DISABLE_NIP11|no|Disable handle NIP-11 request||
+|SPAM_DETECT_PERCENT|no|Setup spam filter detect percentage, 0 to disable spam filter|`0.5`|
+|BOT_KEY|no, yes if enabled payment|Bot private key, in hex encoding, if you enabled payment for relay, you should setup this||
+|BOT_NAME|no|Bot name|You relay's name + `'s bot`|
+|BOT_AVATAR|no|Bot picture|`https://media-uploader.orzv.workers.dev/pomf2.lain.la/f/m4lnneh4.png`|
+|BOT_RELAY|no, yes if enabled payment|You bot relay list||
+|MAX_MESSAGE_LENGTH|no|Max message length per websocket send|`393216` -> 384KB|
+|MAX_SUBSCRIPTIONS|no|Max subscriptions per connection|`32`|
+|MAX_FILTER|no|Max filters per REQ subscription|`10`|
+|MAX_LIMIT|no|Max limit per filter|`500`|
+|MAX_SUBID_LENGTH|no|Max subscription id length|`64`|
+|MIN_PREFIX|no|Min prefix for ids and authors param|`32`|
+|MAX_EVENT_TAGS|no|Max tags per event|`2048`|
+|MAX_CONTENT_LENGTH|no|Max content length per event|`102400` -> 100KB|
+|MIN_POW_DIFFICULTY|no|Min NIP-13 PoW diffieculty|`0`|
+|AUTH_REQUIRED|no|Need auth for access||
+|PAYMENT_REQUIRED|no|Need pay for access||
+|NIPS|no|NIP-11 supported nips|`1,9,11,12,13,15,16,20,22,26,33,40,42`|
+|EVENT_RETENTION|no|NIP-11 event retention, in JSON format|`[{"kinds":[1,4],"time":31536000,"count":5000},{"kinds":[6,7],"count":10000},{"kinds":[0,2,3],"count":1},{"count":1000}]`|
+|EVENT_TIMESTAMP_RANGE|no|NIP-22 timestamp accepted range|`-86400~300` -> one day ago to 5 minites later|
+|BROADCAST_RELAYS|no|Events broadcast to other relays, seperated by comma||
+|WHITELIST_PUBKEYS|no|Whitelist pubkeys, seperated by comma||
+|LANGUAGE_TAGS|no|NIP-11 language tags||
+|TAGS|no|NIP-11 tags||
+|POSTING_POLICY|no|NIP-11 posting policy url||
+|PAYMENT_LNURL|no|Payment LNURL||
+|FEES_ADMISSION|no|Fees for admission, unit sats, eg. `1000,2000,3000`||
+|FEES_SUBSCRIPTION|no|Fees for subscription, unit sats, eg. `1000/2592000,2000/31536000`||
+|FEES_PUBLICATION|no|Fees for publication, unit sats, eg. `1,2,3:10,4,10000:100`||
 
-## Use as a library
-
-```ts
-import { Application } from "https://deno.land/x/nostring/mod.ts"
-
-// Use a http server to serve your handler
-import { serve } from "https://deno.land/std/http/server.ts"
-
-// You should implement a DataAdapter
-// or use the example repo
-// const repo = new SomeRepo(...)
-const db = new PgRepository("YOUR DB URL")
-await db.init();
-
-const app = new Application({
-  // REQUIRED, a function convert Request to WebSocket Response
-  // You can use Deno default, or another function
-  upgradeWebSocketFn: Deno.upgradeWebSocket,
-
-  // REQUIRED, an implement of DataAdapter
-  db,
-
-  // optional, callback of new connection request
-  // you can block a connection with throw an Error
-  // can be async function
-  onConnect: (ws, req) => {
-    // Take care, this `ws:WebSocket` currently does not established
-
-    // do something...
-    // if you do not want to establish this connection
-    // throw an error
-    throw new Error("")
-  },
-
-  // optional, callback of new connection established
-  // If you want to make a whitelist control relay,
-  // you can send a AUTH message on this callback
-  onEstablished(ws) {
-    app.send(ws, ["AUTH", "...your challenge..."])
-  },
-
-  // optional, callback of new Event has been validated
-  // This callback will be triggered after validate the event,
-  // so the event is legal
-  async onEvent: (ev, ws) => {
-    // can be async
-
-    // If you need to broadcast this event to other instances,
-    // you should do it in this callback
-    await channel.send(ev)
-
-    // If you do not want to store this event,
-    // and prevent the spread to other subscription,
-    // you can throw an error
-    throw new Error("Shutdown!")
-  },
-
-  // optional, callback of client send an auth Event and validated
-  onAuth: (ev, ws) => {},
-
-  // optional, callback of new REQ subscription
-  onReq: (id, filters, ws) => {},
-
-  // optional, callback of an Event will be send to client
-  // this callback will triggered before a event respond to a REQ subscription
-  onStream: (e, id, ws) => {
-    // If you want to block this event to respond client
-    // you can return false
-    if (e.kind === 1) {
-      return false
-    }
-
-    return true
-  },
-
-  // optional, name of this relay
-  name: "",
-
-  // optional, description of this relay
-  description: "",
-
-  // optional, pubkey of relay's owner, in hex encoding
-  pubkey: "",
-
-  // optional, alternative contact of relay's owner
-  contact: "",
-
-  // optional, it can override the whole nip11 json
-  nip11: {
-    supported_nips: [1, 2, 4],
-  },
-
-  // optional, min PoW of NIP-13, default 0
-  minPow: 0,
-});
-
-// Serve
-
-serve(app.getHandler(), { port: 9000 })
-
-// If you receive an Event from other ways,
-// you can broadcast it to the connections which subscribed
-app.boradcast(event)
-```
-
-## BREAKING updates
-
-~2.0.0 has many breaking features, you should migrate carefully.

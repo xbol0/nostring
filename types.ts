@@ -17,7 +17,7 @@ export type Nip11 = {
   supported_nips: number[];
   software: string;
   version: string;
-};
+} & Record<string, unknown>;
 
 export type Limits = {
   maxMessageLength: number;

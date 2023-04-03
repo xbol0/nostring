@@ -74,16 +74,6 @@ export class Application {
     }
 
     this.port = parseInt(env.PORT || "9000");
-    this.nip11 = {
-      name: env.RELAY_NAME || "nostring",
-      contact: env.ADMIN_CONTACT || "",
-      description: env.RELAY_DESC || "",
-      pubkey: env.ADMIN_PUBKEY || "",
-      software: "https://github.com/xbol0/nostring",
-      supported_nips: (env.NIPS || DefaultNIPs).split(",")
-        .map((i) => parseInt(i)),
-      version: "3.0.0-rc.2",
-    };
     this.limits = {
       maxMessageLength: parseInt(env.MAX_MESSAGE_LENGTH) || 393216,
       maxSubscriptions: parseInt(env.MAX_SUBSCRIPTIONS) || 32,
@@ -137,6 +127,26 @@ export class Application {
     } else if (this.fees.subscription.length) {
       this.defaultPlan = this.fees.subscription[0];
     }
+
+    this.nip11 = {
+      name: env.RELAY_NAME || "nostring",
+      contact: env.ADMIN_CONTACT || "",
+      description: env.RELAY_DESC || "",
+      pubkey: env.ADMIN_PUBKEY || "",
+      software: "https://github.com/xbol0/nostring",
+      supported_nips: (env.NIPS || DefaultNIPs).split(",")
+        .map((i) => parseInt(i)),
+      version: "3.0.0-rc.2",
+      relay_countries: env.RELAY_COUNTRIES
+        ? env.RELAY_COUNTRIES.split(",")
+        : void 0,
+      language_tags: env.LANGUAGE_TAGS ? env.LANGUAGE_TAGS.split(",") : void 0,
+      tags: env.TAGS ? env.TAGS.split(",") : void 0,
+      posting_policy: env.POSTING_POLICY,
+      limitation: this.limits,
+      fees: this.fees,
+      event_retention: this.retentions,
+    };
 
     this.botKey = env.BOT_KEY;
 
