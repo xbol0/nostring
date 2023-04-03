@@ -546,5 +546,12 @@ function parseFeatures(
     obj["allow_unknown_kind"] = true;
   }
 
+  if (
+    typeof env.DISABLE_NIP11 !== "undefined" &&
+    env.DISABLE_NIP11 !== "false"
+  ) {
+    obj["disable_nip11"] = true;
+  }
+
   return obj;
 }

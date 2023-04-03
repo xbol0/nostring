@@ -1,17 +1,21 @@
 import { Application } from "./app.ts";
-import { render } from "./web.ts";
-
-const CORSHeaders = { "Access-Control-Allow-Origin": "*" };
+import { CORSHeaders, HomeTemplate } from "./constant.ts";
+import { nostr } from "./deps.ts";
 
 export function getHandler(app: Application) {
-  return async (req: Request) => {
+  return (req: Request) => {
+    const url = new URL(req.url);
+
     if (req.method === "OPTIONS") {
       return new Response(null, { headers: CORSHeaders });
     }
 
-    if (req.headers.get("accept") === "application/nostr+json") {
+    if (
+      !app.features.disable_nip11 &&
+      req.headers.get("accept") === "application/nostr+json"
+    ) {
       const url = new URL(req.url);
-      const paymentUrl = new URL("/payments", url.origin);
+      const paymentUrl = new URL("/", url.origin);
       const info: Record<string, unknown> = {
         ...app.nip11,
         limitation: app.limits,
@@ -60,10 +64,23 @@ export function getHandler(app: Application) {
       return response;
     }
 
-    try {
-      return await render(req, app);
-    } catch (err) {
-      return new Response(err.message, { status: 400 });
+    if (req.method === "GET" && url.pathname === "/") {
+      return new Response(
+        HomeTemplate.replaceAll("%name", app.nip11.name)
+          .replaceAll("%desc", app.nip11.description || "~")
+          .replaceAll(
+            "%admin",
+            app.nip11.pubkey ? nostr.nip19.npubEncode(app.nip11.pubkey) : "~",
+          )
+          .replaceAll("%bot", app.botPubkey || "~")
+          .replaceAll(
+            "%url",
+            `${url.protocol === "https:" ? "wss:" : "ws:"}//${url.host}`,
+          ),
+        { headers: { "content-type": "text/plain" } },
+      );
     }
+
+    return new Response(null, { status: 404 });
   };
 }

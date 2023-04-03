@@ -1,6 +1,7 @@
 {
   "tasks":{
     "start": "deno run --allow-read --allow-net --allow-env scripts/start.ts",
+    "dev": "deno run --watch --allow-read --allow-net --allow-env scripts/start.ts",
     "sign": "deno run --allow-read --allow-net --allow-env scripts/send.ts",
     "verify": "deno run --allow-read --allow-net --allow-env scripts/verify.ts",
     "migration": "deno run --allow-read --allow-net --allow-env scripts/migration.ts",
