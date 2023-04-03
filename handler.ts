@@ -72,7 +72,10 @@ export function getHandler(app: Application) {
             "%admin",
             app.nip11.pubkey ? nostr.nip19.npubEncode(app.nip11.pubkey) : "~",
           )
-          .replaceAll("%bot", app.botPubkey || "~")
+          .replaceAll(
+            "%bot",
+            app.botPubkey ? nostr.nip19.npubEncode(app.botPubkey) : "~",
+          )
           .replaceAll(
             "%url",
             `${url.protocol === "https:" ? "wss:" : "ws:"}//${url.host}`,
