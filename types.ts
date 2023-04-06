@@ -4,6 +4,7 @@ export interface Repository {
   init(): Promise<void>;
   save(e: nostr.Event): Promise<void>;
   query(filters: nostr.Filter): Promise<nostr.Event[]>;
+  count(filters: nostr.Filter): Promise<number>;
   processPayment(e: nostr.Event): Promise<void>;
   status(): Promise<Record<string, number>>;
   pubkeyInfo(pubkey: string): Promise<User>;

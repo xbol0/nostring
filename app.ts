@@ -264,6 +264,16 @@ export class Application {
             throw new Error("Invalid req message");
           }
         }
+
+        if (data[0] === "COUNT" && data.length === 3) {
+          if (typeof data[1] !== "string") {
+            throw new Error("Invalid count message");
+          }
+
+          if (typeof data[2] !== "object" || !data[2]) {
+            throw new Error("Invalid filter");
+          }
+        }
       } catch (e) {
         return this.send(socket, ["NOTIFY", "Invalid body: " + e.message]);
       }
@@ -281,6 +291,12 @@ export class Application {
           return this.onAUTH(data[1] as nostr.Event, socket);
         case "EVENT":
           return this.onEVENT(data[1] as nostr.Event, socket);
+        case "COUNT":
+          return this.onCOUNT(
+            data[1] as string,
+            data[2] as nostr.Filter,
+            socket,
+          );
         default:
           return this.send(socket, ["NOTIFY", `Unknown type: '${data[0]}'`]);
       }
@@ -341,6 +357,27 @@ export class Application {
     }
 
     this.send(socket, ["EOSE", id]);
+  }
+
+  async onCOUNT(id: string, filter: nostr.Filter, socket: WebSocket) {
+    if (this.limits.authRequired && filter.kinds?.includes(4)) {
+      if (!this.authed.has(socket)) {
+        return this.send(socket, ["COUNT", id, { count: 0 }]);
+      }
+    }
+
+    if (Object.keys(filter).filter((j) => j != "limit").length === 0) {
+      return this.send(socket, ["COUNT", id, { count: 0 }]);
+    }
+
+    try {
+      this.send(socket, ["COUNT", id, {
+        count: await this.repo.count(filter),
+      }]);
+    } catch (e) {
+      console.error(e);
+      return this.send(socket, ["COUNT", id, { count: 0 }]);
+    }
   }
 
   async onEVENT(ev: nostr.Event, socket: WebSocket) {

@@ -83,127 +83,149 @@ export class PgRepo implements Repository {
     return await this.cleanup(e.pubkey);
   }
 
+  _getSql(filter: nostr.Filter, count = false): [string, unknown[]] {
+    const wheres: string[] = [], args: unknown[] = [];
+    let i = 1, limit = this.app.limits.maxLimit;
+
+    if (filter.ids && filter.ids.length) {
+      if (filter.ids.length > FilterItemLimit) {
+        throw new Error("Too many ids");
+      }
+
+      const subs: string[] = [];
+
+      for (const item of filter.ids) {
+        if (
+          this.app.limits.minPrefix && item.length < this.app.limits.minPrefix
+        ) {
+          throw new Error(
+            `Prefix query less than ${this.app.limits.minPrefix}`,
+          );
+        }
+        if (item && item.length > 64) continue;
+
+        subs.push(`id like $${i++}`);
+        args.push(`${item}%`);
+      }
+
+      if (subs.length) {
+        wheres.push(`(${subs.join(" or ")})`);
+      }
+    }
+
+    if (filter.authors && filter.authors.length) {
+      if (filter.authors.length > FilterItemLimit) {
+        throw new Error("Too many authors");
+      }
+
+      const subs: string[] = [];
+
+      for (const item of filter.authors) {
+        if (
+          this.app.limits.minPrefix && item &&
+          item.length < this.app.limits.minPrefix
+        ) {
+          throw new Error(
+            `Prefix query less than ${this.app.limits.minPrefix}`,
+          );
+        }
+        if (item && item.length > 64) continue;
+
+        subs.push(`pubkey like $${i} or delegator like $${i++}`);
+        args.push(`${item}%`);
+      }
+
+      if (subs.length) {
+        wheres.push(`(${subs.join(" or ")})`);
+      }
+    }
+
+    if (filter.kinds && filter.kinds.length) {
+      if (filter.kinds.length > FilterItemLimit) {
+        throw new Error("Too many kinds");
+      }
+
+      wheres.push(`kind=any($${i++})`);
+      args.push(filter.kinds);
+    }
+
+    if (filter.since) {
+      wheres.push(`created_at>=$${i++}`);
+      args.push(new Date(filter.since * 1000));
+    }
+
+    if (filter.until) {
+      wheres.push(`created_at<$${i++}`);
+      args.push(new Date(filter.until * 1000));
+    }
+
+    if (filter.limit) {
+      if (filter.limit > 0 && filter.limit <= limit) {
+        limit = filter.limit;
+      }
+    }
+
+    const tagQueries = Object.entries(filter)
+      .filter((i) => i[0].startsWith("#") && i[0].length > 1)
+      .map((i) => [i[0].slice(1), i[1]]);
+    if (tagQueries.length) {
+      if (tagQueries.length > 10) {
+        throw new Error("Too many tag queries");
+      }
+
+      for (const [k, vals] of tagQueries) {
+        if ((vals as string[]).length > this.app.limits.maxEventTags) {
+          throw new Error("Too many tag values");
+        }
+
+        if (!(vals as string[]).length) {
+          continue;
+        }
+
+        const subs: string[] = [];
+
+        for (const v of vals as string[]) {
+          subs.push(`tags @> $${i++}`);
+          args.push(JSON.stringify([k, v]));
+        }
+
+        wheres.push(`(${subs.join(" or ")})`);
+      }
+    }
+
+    if (wheres.length === 0) {
+      throw new Error("Empty filter");
+    }
+
+    if (!count) args.push(limit);
+
+    const fields = count
+      ? "count(*)"
+      : "id,kind,pubkey,content,sig,tags,created_at";
+
+    const suffix = count ? "" : ` order by created_at desc limit $${i++}`;
+
+    return [
+      `select ${fields} from events where ` +
+      wheres.join(" and ") +
+      ` and (expired_at is null or expired_at>current_timestamp) ${suffix}`,
+      args,
+    ];
+  }
+
   async query(filter: nostr.Filter) {
     return await this.use(async (db) => {
-      const wheres: string[] = [], args: unknown[] = [];
-      let i = 1, limit = this.app.limits.maxLimit;
+      const [sql, params] = this._getSql(filter);
 
-      if (filter.ids && filter.ids.length) {
-        if (filter.ids.length > FilterItemLimit) {
-          throw new Error("Too many ids");
-        }
+      return (await db.queryObject<nostr.Event>(sql, params)).rows;
+    });
+  }
 
-        const subs: string[] = [];
+  async count(filter: nostr.Filter) {
+    return await this.use(async (db) => {
+      const [sql, params] = this._getSql(filter, true);
 
-        for (const item of filter.ids) {
-          if (
-            this.app.limits.minPrefix && item.length < this.app.limits.minPrefix
-          ) {
-            throw new Error(
-              `Prefix query less than ${this.app.limits.minPrefix}`,
-            );
-          }
-          if (item && item.length > 64) continue;
-
-          subs.push(`id like $${i++}`);
-          args.push(`${item}%`);
-        }
-
-        if (subs.length) {
-          wheres.push(`(${subs.join(" or ")})`);
-        }
-      }
-
-      if (filter.authors && filter.authors.length) {
-        if (filter.authors.length > FilterItemLimit) {
-          throw new Error("Too many authors");
-        }
-
-        const subs: string[] = [];
-
-        for (const item of filter.authors) {
-          if (
-            this.app.limits.minPrefix && item &&
-            item.length < this.app.limits.minPrefix
-          ) {
-            throw new Error(
-              `Prefix query less than ${this.app.limits.minPrefix}`,
-            );
-          }
-          if (item && item.length > 64) continue;
-
-          subs.push(`pubkey like $${i} or delegator like $${i++}`);
-          args.push(`${item}%`);
-        }
-
-        if (subs.length) {
-          wheres.push(`(${subs.join(" or ")})`);
-        }
-      }
-
-      if (filter.kinds && filter.kinds.length) {
-        if (filter.kinds.length > FilterItemLimit) {
-          throw new Error("Too many kinds");
-        }
-
-        wheres.push(`kind=any($${i++})`);
-        args.push(filter.kinds);
-      }
-
-      if (filter.since) {
-        wheres.push(`created_at>=$${i++}`);
-        args.push(new Date(filter.since * 1000));
-      }
-
-      if (filter.until) {
-        wheres.push(`created_at<$${i++}`);
-        args.push(new Date(filter.until * 1000));
-      }
-
-      if (filter.limit) {
-        if (filter.limit > 0 && filter.limit <= limit) {
-          limit = filter.limit;
-        }
-      }
-
-      const tagQueries = Object.entries(filter)
-        .filter((i) => i[0].startsWith("#") && i[0].length > 1)
-        .map((i) => [i[0].slice(1), i[1]]);
-      if (tagQueries.length) {
-        if (tagQueries.length > 10) {
-          throw new Error("Too many tag queries");
-        }
-
-        for (const [k, vals] of tagQueries) {
-          if ((vals as string[]).length > this.app.limits.maxEventTags) {
-            throw new Error("Too many tag values");
-          }
-
-          if (!(vals as string[]).length) {
-            continue;
-          }
-
-          const subs: string[] = [];
-
-          for (const v of vals as string[]) {
-            subs.push(`tags @> $${i++}`);
-            args.push(JSON.stringify([k, v]));
-          }
-
-          wheres.push(`(${subs.join(" or ")})`);
-        }
-      }
-
-      if (wheres.length === 0) {
-        throw new Error("Empty filter");
-      }
-
-      return (await db.queryObject<nostr.Event>(
-        "select id,kind,pubkey,content,sig,tags,created_at from events where " +
-          wheres.join(" and ") +
-          ` and (expired_at is null or expired_at>current_timestamp) order by created_at desc limit $${i++}`,
-        [...args, limit],
-      )).rows;
+      return Number((await db.queryArray<[bigint]>(sql, params)).rows[0][0]);
     });
   }
 

@@ -2,7 +2,7 @@ import type { parseEventRetention } from "./util.ts";
 
 // Default supported NIPs
 // Currently not suppported NIP-50
-export const DefaultNIPs = "1,9,11,12,13,15,16,20,22,26,33,40,42";
+export const DefaultNIPs = "1,9,11,12,13,15,16,20,22,26,33,40,42,45";
 
 export const CORSHeaders = { "Access-Control-Allow-Origin": "*" };
 
